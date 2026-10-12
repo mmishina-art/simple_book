@@ -1,6 +1,6 @@
 // 自炊した PDF を OCR でテキストにして、アプリに取り込める本ファイル(.md)を作る。パソコンで実行する。
 //
-//   node scripts/pdf2book.ts 本.pdf [--title 書名] [--out 本.md] [--lang jpn] [--dpi 300] [--from 1] [--to 50] [--jobs 4]
+//   node scripts/pdf2book.ts 本.pdf [--title 書名] [--out 本.md] [--lang jpn] [--dpi 300] [--from 1] [--to 50] [--jobs 4] [--psm 4] [--no-headings]
 //
 // 必要なもの: Node 22.18 以上 / poppler(pdftoppm, pdfinfo) / tesseract と日本語データ(jpn。縦書きの本は jpn_vert も)
 //   Mac:    brew install poppler tesseract tesseract-lang
@@ -26,7 +26,8 @@ const { values, positionals } = parseArgs({
     from: { type: 'string' },
     to: { type: 'string' },
     jobs: { type: 'string' },
-    psm: { type: 'string', default: '3' },
+    psm: { type: 'string', default: '4' }, // 4: 1段組み(小説向け)。段組みや図のある本は 3
+    'no-headings': { type: 'boolean' },
     work: { type: 'string' },
     help: { type: 'boolean', short: 'h' },
   },
@@ -34,7 +35,7 @@ const { values, positionals } = parseArgs({
 
 const pdf = positionals[0];
 if (values.help || !pdf) {
-  console.log('使い方: node scripts/pdf2book.ts 本.pdf [--title 書名] [--out 本.md] [--lang jpn] [--dpi 300] [--from N] [--to N] [--jobs N]');
+  console.log('使い方: node scripts/pdf2book.ts 本.pdf [--title 書名] [--out 本.md] [--lang jpn] [--dpi 300] [--from N] [--to N] [--jobs N] [--no-headings]');
   process.exit(pdf ? 0 : 1);
 }
 if (!existsSync(pdf)) fail(`PDF が見つかりません: ${pdf}`);
@@ -107,7 +108,10 @@ process.stdout.write('\n');
 const pages: string[][] = [];
 for (let n = 1; n <= last; n++) pages.push(n < first ? [] : cleanPage(await readFile(pageFile(n), 'utf8')));
 const title = values.title ?? base;
-await writeFile(out, buildBookMarkdown(title, pages));
+const markdown = buildBookMarkdown(title, pages, !values['no-headings']);
+await writeFile(out, markdown);
+const headings = markdown.split('\n').filter((l) => /^##+ /.test(l)).length;
 const empty = pages.slice(first - 1).filter((p) => p.length === 0).length;
 console.log(`書き出しました: ${out}${empty > 0 ? `(文字が読み取れなかったページ: ${empty})` : ''}`);
-console.log('OCR の誤りや見出し(## 第1章)は、このファイルをテキストエディタで直せます。アプリの「本を追加」で選んでください。');
+console.log(`見出しを ${headings} 個、自動で付けました(第一章 / 序章 / 漢数字だけの行など。いらないときは --no-headings)`);
+console.log('OCR の誤りや見出しの付け間違いは、このファイルをテキストエディタで直せます。アプリの「本を追加」で選んでください。');

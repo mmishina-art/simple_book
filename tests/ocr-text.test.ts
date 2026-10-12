@@ -44,3 +44,39 @@ describe('buildBookMarkdown', () => {
     expect(parseBook(buildBookMarkdown('t', [['# 偽の見出し']])).blocks.at(-1)).toEqual({ kind: 'p', text: '偽の見出し' });
   });
 });
+
+describe('見出しの自動検出', () => {
+  const headings = (pages: string[][], detect = true): string[] =>
+    buildBookMarkdown('t', pages, detect).split('\n').filter((l) => /^##+ /.test(l));
+
+  it('第一章・序章・あとがきなどを ## にする', () => {
+    expect(headings([['序章'], ['第一章 旅立ち', '本文。'], ['第2部'], ['あとがき']])).toEqual(['## 序章', '## 第一章 旅立ち', '## 第2部', '## あとがき']);
+  });
+
+  it('OCR が「第」を落とした「一章 …」も見出しにする', () => {
+    expect(headings([['一章朝の散歩']])).toEqual(['## 一章朝の散歩']);
+  });
+
+  it('第三話・第十節は ###', () => {
+    expect(headings([['第三話'], ['第十節 夜']])).toEqual(['### 第三話', '### 第十節 夜']);
+  });
+
+  it('漢数字だけの行は、章がなければ ##、章があれば ###', () => {
+    expect(headings([['一', '本文。'], ['二']])).toEqual(['## 一', '## 二']);
+    expect(headings([['第一章'], ['一'], ['二']])).toEqual(['## 第一章', '### 一', '### 二']);
+  });
+
+  it('本文や文の途中は見出しにしない', () => {
+    expect(headings([['第一章では、彼女が旅に出る。'], ['はじめに彼は言った。'], ['一人で歩いた。'], ['第一章 ' + 'あ'.repeat(40)]])).toEqual([]);
+  });
+
+  it('detect を切ると、何も付けない', () => {
+    expect(headings([['第一章']], false)).toEqual([]);
+  });
+
+  it('アプリの目次になる', () => {
+    const book = parseBook(buildBookMarkdown('t', [['第一章 始まり', '本文。'], ['第二章']]));
+    expect(book.toc.map((t) => t.text)).toEqual(['第一章 始まり', '第二章']);
+  });
+});
+

@@ -24,14 +24,40 @@ export function cleanPage(raw: string): string[] {
   return paragraphs;
 }
 
-/** 書名とページごとの段落から、本ファイル(簡易 Markdown。形式は src/book.ts)を作る */
-export function buildBookMarkdown(title: string, pages: string[][]): string {
+// ---- 見出しの自動検出 ----
+// 小説の見出しは短く、決まった形が多い。文の途中や本文を見出しにしないよう、「全体がその形」で「文末の記号がない」ものだけを選ぶ。
+const NUM = '[一二三四五六七八九十百千〇零0-9０-９]+';
+// 章・部など大きな区切り(例: 第一章 / 第2部 旅立ち / 序章 / あとがき。OCR が「第」を落とした「一章」も拾う)
+const BIG = new RegExp(`^(第${NUM}[章部編巻]|${NUM}章|序章|終章|序|跋|プロローグ|エピローグ|はじめに|おわりに|あとがき|後書き|解説)([ \u3000]*[^。、！？!?「」]{0,24})?$`);
+// 小さな区切り(例: 第三話 / 第十節)
+const SMALL = new RegExp(`^第${NUM}[節話回幕]([ \u3000]*[^。、！？!?「」]{0,24})?$`);
+// 漢数字だけの行(章番号。例: 一 / 十二)
+const BARE_NUMBER = /^[一二三四五六七八九十百]{1,4}$/;
+
+function headingKind(p: string): 'big' | 'small' | 'number' | null {
+  if (p.length > 30) return null;
+  if (BIG.test(p)) return 'big';
+  if (SMALL.test(p)) return 'small';
+  if (BARE_NUMBER.test(p)) return 'number';
+  return null;
+}
+
+/** 書名とページごとの段落から、本ファイル(簡易 Markdown。形式は src/book.ts)を作る。detect が true なら、見出しを自動で付ける */
+export function buildBookMarkdown(title: string, pages: string[][], detect = true): string {
+  const kinds = detect ? pages.map((paragraphs) => paragraphs.map(headingKind)) : [];
+  // 「第一章」のような大きな区切りがある本では、漢数字だけの行はその下の小見出し(###)。なければ章(##)。
+  const hasBig = kinds.some((row) => row.includes('big'));
   const out: string[] = [`# ${title.replace(/\s+/g, ' ').trim() || '無題'}`];
   pages.forEach((paragraphs, i) => {
     if (paragraphs.length === 0) return;
     out.push(`<!-- page ${i + 1} -->`);
-    // 行頭が # の段落は、見出しと取り違えられないよう目印を外す
-    for (const p of paragraphs) out.push(p.replace(/^#+\s*/, ''));
+    paragraphs.forEach((p, j) => {
+      // 行頭が # の段落は、見出しと取り違えられないよう目印を外す
+      const text = p.replace(/^#+\s*/, '');
+      const kind = kinds[i]?.[j] ?? null;
+      const level = kind === 'big' ? '##' : kind === 'small' ? '###' : kind === 'number' ? (hasBig ? '###' : '##') : '';
+      out.push(level ? `${level} ${text}` : text);
+    });
   });
   return out.join('\n\n') + '\n';
 }
