@@ -162,6 +162,50 @@ test('本を削除できる', async ({ page }) => {
   await expect(page.locator('#empty-message')).toBeVisible();
 });
 
+test.describe('PDF から本を作る(OCR)', () => {
+  // OCR(wasm)は時間がかかるので、タイムアウトを長めにする
+  test.setTimeout(180_000);
+
+  async function convert(page: Page, pdf: string, direction: '縦書き' | '横書き'): Promise<void> {
+    await page.goto('/');
+    await page.getByRole('button', { name: /PDF から本を作る/ }).click();
+    await page.locator('#convert-file').setInputFiles(new URL(`./fixtures/${pdf}`, import.meta.url).pathname);
+    await page.locator('#convert-dialog').getByRole('button', { name: direction, exact: true }).click();
+    await page.getByRole('button', { name: '変換をはじめる' }).click();
+    await expect(page.locator('#convert-result')).toContainText('本棚に追加しました', { timeout: 150_000 });
+  }
+
+  test('横書きの PDF を、表紙・見出し・挿絵つきの本にできる', async ({ page }) => {
+    await useHorizontal(page);
+    await convert(page, 'horizontal.pdf', '横書き');
+    await page.locator('#convert-dialog').getByRole('button', { name: 'とじる' }).click();
+
+    // 本棚に表紙のサムネイルが出る
+    await expect(page.locator('#book-list img.cover')).toHaveCount(1);
+    await page.getByRole('button', { name: /horizontal/ }).first().click();
+    await expect(page.locator('#reader-body figure img')).toHaveCount(2); // 表紙 + 挿絵
+    await expect(page.getByText('今日は早く起きて')).toBeVisible();
+    // 見出しが自動で付き、目次になる
+    await page.getByRole('button', { name: '目次' }).click();
+    await expect(page.locator('#toc-list')).toContainText('第一章');
+  });
+
+  test('縦書きの PDF を読み取れる', async ({ page }) => {
+    await convert(page, 'vertical.pdf', '縦書き');
+    await page.locator('#convert-dialog').getByRole('button', { name: 'とじる' }).click();
+    await page.getByRole('button', { name: /vertical/ }).first().click();
+    await expect(page.locator('#reader-body')).toContainText('公園');
+  });
+
+  test('PDF ではないファイルは、理由を出して断る', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: /PDF から本を作る/ }).click();
+    await page.locator('#convert-file').setInputFiles({ name: 'x.pdf', mimeType: 'application/pdf', buffer: Buffer.from('これはPDFではない') });
+    await page.getByRole('button', { name: '変換をはじめる' }).click();
+    await expect(page.locator('#convert-error')).toContainText('変換できませんでした');
+  });
+});
+
 test('manifest と Service Worker が使える', async ({ page }) => {
   await page.goto('/');
   const href = await page.locator('link[rel="manifest"]').getAttribute('href');

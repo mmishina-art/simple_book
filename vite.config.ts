@@ -49,7 +49,19 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,webmanifest}'],
+        // OCR のデータ(約 16MB)は、本を読むだけの人に配らない。「PDF を変換」を初めて使ったときに取得して、あとは端末に残す(下の runtimeCaching)
+        globIgnores: ['ocr/**'],
+        // PDF 変換の部品(pdf.js)も同様。初回の取得は変換画面を開いたとき
+        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         navigateFallback: 'index.html',
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }: { url: URL }) => url.pathname.includes('/ocr/') || /pdf\.worker/.test(url.pathname),
+            handler: 'CacheFirst',
+            // キャッシュ名は「アプリの ID-」で始める(public/boot.js の復旧が、このアプリのキャッシュだけを消せるように)
+            options: { cacheName: `${appId}-ocr`, expiration: { maxEntries: 30 }, cacheableResponse: { statuses: [0, 200] } },
+          },
+        ],
       },
     }),
   ],

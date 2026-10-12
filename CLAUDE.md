@@ -10,7 +10,7 @@ PWA アプリ(ツール/ゲーム)の共通テンプレート。**新しいア�
 - アプリの概要: 自炊 PDF をパソコンで OCR して本ファイル(.md)にし、スマホで読む電子書籍アプリ(本棚 + リーダー)
 - 配色: 端末設定に従う(読書画面の「Aa」で 明るい / セピア / 暗い に固定もできる)
 - 公開 URL: https://mmishina-art.github.io/simple_book/
-- 追加した拡張: なし(アプリ側)。本の文章は大きいので IndexedDB(`src/library.ts`)に入れる。OCR はパソコンで動かす `scripts/pdf2book.ts`(外部コマンド poppler / tesseract を呼ぶ。依存パッケージは増やしていない)。読書アプリなので効果音(`sound.ts`)は持たない
+- 追加した拡張: 本の文章・画像は大きいので IndexedDB(`src/library.ts`)に入れる。**PDF の変換**(`src/convert.ts`)のために `pdfjs-dist`(PDF をページ画像にする)と `tesseract.js` + 日本語データ(OCR)を入れた。理由: 利用者がパソコンに何もインストールせず、PDF も外へ送らずに変換できるようにするため。これらは「PDF から本を作る」画面を開いたときだけ読み込み(動的 import)、OCR のデータ(約 16MB)は事前キャッシュに入れず、初回の利用時に取得して端末に残す(`vite.config.ts` の `globIgnores` / `runtimeCaching`)。外部の CDN は使わず、`scripts/copy-ocr-assets.mjs` が `public/ocr/` に集めて同じサイトから配る。パソコン用のコマンド `scripts/pdf2book.ts`(poppler / tesseract)も残す。読書アプリなので効果音(`sound.ts`)は持たない
 
 ## 基本方針
 
@@ -42,7 +42,7 @@ Vite + TypeScript + vite-plugin-pwa + Vitest + Playwright + ESLint。UI フレ�
 
 - `src/book.ts`: 本ファイルの解析・しおり・設定。DOM に触れない純関数にして `tests/` で単体テストする(このアプリの `logic.ts` にあたる)。
 - `src/main.ts`(本棚・配線)、`src/reader.ts`(読書画面)、`src/library.ts`(本の保管庫 IndexedDB)、`src/storage.ts`(しおり・設定)、`src/pwa.ts`(更新ボタン)、`src/install.ts`(インストール方法の説明)。
-- `scripts/pdf2book.ts` / `scripts/ocr-text.ts`: PDF → 本ファイルの変換(パソコンで実行)。
+- `src/convert.ts`(アプリ内の PDF 変換)/ `src/convert-ui.ts`(その画面)/ `src/ocr-text.ts`(OCR の整形・見出し検出・本ファイルの組み立て。純関数)。`scripts/pdf2book.ts`: パソコンのコマンドでの変換。`scripts/copy-ocr-assets.mjs`: OCR のデータを `public/ocr/` に集める(ビルド前に自動実行。生成物なので Git には入れない)。
 - `vite.config.ts`: アプリ名・色・manifest。`index.html` の `theme-color`・タイトルと合わせて書き換える。
 - `scripts/check-dist.mjs`: ビルド成果物が PWA として成立しているかの検査。
 - 画面の部品や機能を足すときは、ファイルを `src/` に分ける。Service Worker のファイル一覧は**自動生成**なので手で更新しない。

@@ -30,6 +30,8 @@
       <label class="file-button primary-file">本を追加<input id="book-import" type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" multiple hidden></label>
       <p id="import-message" class="muted" role="status"></p>
 
+      <button id="convert-open" type="button" class="wide">PDF から本を作る(OCR)</button>
+
       <details class="howto">
         <summary>PDF から本ファイルを作るには</summary>
         <ol>
@@ -66,6 +68,44 @@
         <span id="reader-progress" role="status" aria-live="off"></span>
       </footer>
     </div>
+
+    <!-- PDF → 本の変換(OCR)。端末の中だけで処理する -->
+    <dialog id="convert-dialog" class="sheet" aria-labelledby="convert-title">
+      <h2 id="convert-title">PDF から本を作る</h2>
+      <p class="muted">PDF は端末の外へ送られません。文字を読み取って(OCR)、本棚に追加します。パソコンのほうが、ずっと速く終わります。</p>
+
+      <div id="convert-form">
+        <label class="file-button">PDF を選ぶ<input id="convert-file" type="file" accept="application/pdf,.pdf" hidden></label>
+        <p id="convert-filename" class="muted"></p>
+        <label class="field">書名 <input id="convert-title-input" type="text" autocomplete="off"></label>
+        <div class="row" role="group" aria-label="文字の向き">
+          <span>本の向き</span>
+          <span>
+            <button type="button" data-convert-dir="vertical" aria-pressed="true">縦書き</button>
+            <button type="button" data-convert-dir="horizontal" aria-pressed="false">横書き</button>
+          </span>
+        </div>
+        <label class="check"><input id="convert-cover" type="checkbox" checked> 1 ページ目を表紙の画像にする</label>
+        <label class="check"><input id="convert-illustrations" type="checkbox" checked> 文字の少ないページ(挿絵・扉)を画像で残す</label>
+        <label class="check"><input id="convert-headings" type="checkbox" checked> 見出し(第一章 など)を自動で付ける</label>
+        <button id="convert-start" type="button" class="primary wide" disabled>変換をはじめる</button>
+      </div>
+
+      <div id="convert-running" hidden>
+        <progress id="convert-progress" max="100" value="0" aria-label="変換の進み具合"></progress>
+        <p id="convert-status" class="muted" role="status"></p>
+        <p class="muted">変換が終わるまで、この画面を開いたままにしてください。</p>
+        <button id="convert-cancel" type="button" class="wide">中止する</button>
+      </div>
+
+      <div id="convert-done" hidden>
+        <p id="convert-result" role="status"></p>
+        <button id="convert-save" type="button" class="wide">本ファイル(.md)も保存する</button>
+      </div>
+      <p id="convert-error" class="error" role="alert"></p>
+
+      <button type="button" data-close>とじる</button>
+    </dialog>
 
     <!-- 目次 -->
     <dialog id="toc-dialog" class="sheet" aria-labelledby="toc-title">

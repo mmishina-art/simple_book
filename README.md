@@ -11,7 +11,20 @@
 PDF ──(パソコンで OCR)──▶ 本ファイル(.md) ──(スマホに送る)──▶ アプリの「本を追加」 ──▶ 読む
 ```
 
-### 1. PDF を本ファイルに変換する(パソコン)
+### 1. PDF を本にする
+
+**方法 A: アプリの中で変換する(インストール不要。おすすめ)**
+
+本棚の「PDF から本を作る(OCR)」を開き、PDF を選んで「変換をはじめる」。PDF は端末の外へ送られません。終わると、そのまま本棚に追加されます(本ファイル `.md` も保存できます)。
+
+- 本の向き(縦書き/横書き)を選びます。縦書きは専用の認識データ(`jpn_vert`)で読みます。
+- **表紙**: 1 ページ目を表紙の画像にします(本棚のサムネイルにもなる)。
+- **挿絵**: 文字がほとんどないページ(挿絵・扉絵)は、OCR せず画像のまま本に残します。白紙は飛ばします。
+- **見出し**: 「第一章」「序章」などを自動で見出しにします(目次になる)。
+- 初めて使うとき、OCR のデータ(約 16MB)を読み込みます。2 回目からは端末に残ります。
+- **パソコンのほうが速い**です(複数の OCR を並べて動かします)。スマホは 1 つずつなので、時間がかかります。変換中は画面を開いたままにしてください。
+
+**方法 B: パソコンのコマンドで変換する(数百ページを精度よく)**
 
 必要なもの: Node 22.18 以上、poppler、tesseract(日本語データつき)
 
@@ -21,13 +34,16 @@ brew install poppler tesseract tesseract-lang
 # Ubuntu
 sudo apt install poppler-utils tesseract-ocr tesseract-ocr-jpn tesseract-ocr-jpn-vert
 
-node scripts/pdf2book.ts 本.pdf                       # → 本.md ができる
+node scripts/pdf2book.ts 本.pdf                       # → 本.md ができる(1 ページ目は表紙の画像になる)
 node scripts/pdf2book.ts 本.pdf --title "書名" --to 30  # 書名の指定、先頭 30 ページだけ試す
+node scripts/pdf2book.ts 本.pdf --lang jpn_vert --illustrations   # 縦書きの本。挿絵のページも画像で残す
 ```
 
 - 1 ページずつ OCR して、`本.work/` に結果を残します。途中でやめても、同じコマンドで続きから再開できます。
-- 既定は1段組みの小説向け(`--psm 4`)です。段組みや図のある本は `--psm 3`。縦書きの本は `--lang jpn_vert` を試してください。字がうすい・小さいときは `--dpi 400`。
-- **見出しは自動で付きます**: 「第一章」「第2部 旅立ち」「序章」「あとがき」「第三話」と、漢数字だけの行(一、二…)。アプリの目次になります。いらないときは `--no-headings`。漢数字だけの短い行は OCR が読み落とすことがあるので、抜けた見出しは手で足してください。
+- 向きに合わせて読み方(`--psm`)を選びます(横書き 4、縦書き 5)。段組みや図のある横書きの本は `--psm 3`。字がうすい・小さいときは `--dpi 400`。
+- 表紙を付けないときは `--no-cover`。見出しの自動検出を切るときは `--no-headings`。
+- `--illustrations`: 文字の少ないページ(挿絵・扉)を画像で残します(白紙は飛ばします)。
+- **見出しは自動で付きます**: 「第一章」「第2部 旅立ち」「序章」「あとがき」「第三話」と、漢数字だけの行(一、二…)。アプリの目次になります。漢数字だけの短い行は OCR が読み落とすことがあるので、抜けた見出しは手で足してください。
 - OCR の誤字や、見出しの付け間違い・付け漏れは、できた `.md` をテキストエディタで直せます(見出しにしたい行の頭に `## ` を付ける)。
 
 ### 2. アプリに取り込む(スマホ)
@@ -53,6 +69,13 @@ node scripts/pdf2book.ts 本.pdf --title "書名" --to 30  # 書名の指定、�
 
 書名は最初の `# ` の行。`.txt` でも取り込めます。
 
+画像は `data:` の jpeg / png / webp だけ読み込みます(外部の URL の画像は読み込みません。オフラインで読めなくなるため)。
+
+```markdown
+<!-- cover: data:image/jpeg;base64,… -->     ← 表紙(書名の下に表示。本棚のサムネイルになる)
+![挿絵 p.58](data:image/jpeg;base64,…)       ← 挿絵・扉絵
+```
+
 ## 開発
 
 ```bash
@@ -64,7 +87,9 @@ npx playwright install chromium && npm run test:e2e
 
 ## ファイル構成
 
-- `scripts/pdf2book.ts`: PDF → 本ファイルの変換(pdftoppm + tesseract を呼ぶ)。`scripts/ocr-text.ts`: OCR の出力の整形(純関数)
+- `src/convert.ts` / `src/convert-ui.ts`: アプリ内の PDF 変換(pdf.js + tesseract.js。変換画面を開いたときだけ読み込む)
+- `src/ocr-text.ts`: OCR の出力の整形・見出しの検出・本ファイルの組み立て(純関数。アプリとコマンドの両方が使う)
+- `scripts/pdf2book.ts`: パソコンのコマンドでの変換(pdftoppm + tesseract を呼ぶ)。`scripts/copy-ocr-assets.mjs`: OCR のデータを `public/ocr/` に集める(ビルド前に自動実行)
 - `src/book.ts`: 本ファイルの解析・しおり・設定の正規化(純関数)
 - `src/library.ts`: 本の保管庫(IndexedDB)。`src/storage.ts`: しおり・設定(localStorage)
 - `src/reader.ts`: 読書画面。`src/main.ts`: 本棚と全体の配線
@@ -74,4 +99,4 @@ npx playwright install chromium && npm run test:e2e
 
 ## ライセンス
 
-アプリのコードは自作です。本のデータ(PDF・本ファイル)はアプリに含まれず、各自の端末の中にだけあります。OCR には Tesseract(Apache License 2.0)を、利用者のパソコンで使います。
+アプリのコードは自作です。本のデータ(PDF・本ファイル)はアプリに含まれず、各自の端末の中にだけあります。OCR には Tesseract(Apache License 2.0)を、利用者の端末の中で使います(tesseract.js / tesseract.js-core は Apache License 2.0、日本語の認識データ tessdata_best は Apache License 2.0、PDF の描画に pdf.js は Apache License 2.0)。

@@ -1,6 +1,7 @@
 import './style.css';
 import { type Book, MAX_BOOK_BYTES, bookId, clampIndex, normalizeSettings, parseBook, progressPercent } from './book';
 import { type BookSummary, deleteBook, getBook, listBooks, putBook } from './library';
+import { setupConvert } from './convert-ui';
 import { setupInstallGuide } from './install';
 import { setupUpdateBanner } from './pwa';
 import { applySettings, hideBook, isReading, setupReader, showBook } from './reader';
@@ -24,6 +25,27 @@ function savePosition(id: string, i: number, n: number): void {
   save('pos', { ...positions(), [id]: { i, n } });
 }
 
+// 本棚に出す表紙は、小さくしたものを保管庫に入れておく(本棚を開くたびに大きな画像を読まないため)
+async function makeThumbnail(src: string): Promise<string | undefined> {
+  try {
+    const img = new Image();
+    img.src = src;
+    await img.decode();
+    const h = 160;
+    const w = Math.max(1, Math.round((img.naturalWidth / img.naturalHeight) * h));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.min(w, 160);
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return undefined;
+    // 表紙の上下左右を切らず、枠いっぱいに入れる(cover の表示で縁が切れるのは CSS 側)
+    ctx.drawImage(img, 0, 0, canvas.width, h);
+    return canvas.toDataURL('image/jpeg', 0.7);
+  } catch {
+    return undefined;
+  }
+}
+
 // ---- 本棚 ----
 async function renderShelf(): Promise<void> {
   const list = $('book-list');
@@ -38,6 +60,13 @@ async function renderShelf(): Promise<void> {
   list.replaceChildren();
   for (const b of books) {
     const li = document.createElement('li');
+    if (b.cover) {
+      const img = document.createElement('img');
+      img.className = 'cover';
+      img.src = b.cover;
+      img.alt = '';
+      li.append(img);
+    }
     const open = document.createElement('button');
     open.type = 'button';
     open.className = 'book-open';
@@ -70,6 +99,12 @@ async function removeBook(id: string, title: string): Promise<void> {
   await renderShelf();
 }
 
+/** 本ファイルの中身を、保管庫に入れる(おかしい中身は例外で止める)。同じ本は上書きされ、しおりが引き継がれる */
+async function addBookText(text: string, fileName: string): Promise<void> {
+  const book = parseBook(text, fileName);
+  await putBook({ id: bookId(text), title: book.title, text, addedAt: Date.now(), cover: book.cover ? await makeThumbnail(book.cover) : undefined });
+}
+
 async function importFiles(files: FileList): Promise<void> {
   const message = $('import-message');
   const notes: string[] = [];
@@ -77,9 +112,7 @@ async function importFiles(files: FileList): Promise<void> {
   for (const file of Array.from(files)) {
     try {
       if (file.size > MAX_BOOK_BYTES) throw new Error('大きすぎます(30MB まで)');
-      const text = await file.text();
-      const book = parseBook(text, file.name);
-      await putBook({ id: bookId(text), title: book.title, text, addedAt: Date.now() });
+      await addBookText(await file.text(), file.name);
       added++;
     } catch (err) {
       notes.push(`${file.name}: ${err instanceof Error ? err.message : '読み込めませんでした'}`);
@@ -157,6 +190,11 @@ $<HTMLInputElement>('backup-import').addEventListener('change', async (e) => {
     message.textContent = err instanceof Error ? err.message : '読み込めませんでした';
   }
   input.value = '';
+});
+
+setupConvert(async (markdown, fileName) => {
+  await addBookText(markdown, fileName);
+  await renderShelf();
 });
 
 $('version').textContent = __APP_VERSION__;

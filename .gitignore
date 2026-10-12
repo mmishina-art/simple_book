@@ -4,3 +4,4 @@ dev-dist/
 playwright-report/
 test-results/
 .venv/
+public/ocr/
