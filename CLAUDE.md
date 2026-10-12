@@ -6,11 +6,11 @@ PWA アプリ(ツール/ゲーム)の共通テンプレート。**新しいア�
 
 ## このアプリの方針(新規作成時に記入)
 
-- アプリの ID(`package.json` の `name`。**ほかのアプリと別の名前**にする。下の「同じサイトに載るアプリ」を参照):
-- アプリの概要:
-- 配色: (端末設定に従う / 明るい固定 / 暗い固定 のどれか。決めたら src/style.css と theme-color をそろえる)
-- 公開 URL:
-- 追加した拡張: (なし / UI フレームワーク / バックエンド など。理由も書く)
+- アプリの ID(`package.json` の `name`。**ほかのアプリと別の名前**にする。下の「同じサイトに載るアプリ」を参照): `simple-book`
+- アプリの概要: 自炊 PDF をパソコンで OCR して本ファイル(.md)にし、スマホで読む電子書籍アプリ(本棚 + リーダー)
+- 配色: 端末設定に従う(読書画面の「Aa」で 明るい / セピア / 暗い に固定もできる)
+- 公開 URL: https://mmishina-art.github.io/simple_book/
+- 追加した拡張: なし(アプリ側)。本の文章は大きいので IndexedDB(`src/library.ts`)に入れる。OCR はパソコンで動かす `scripts/pdf2book.ts`(外部コマンド poppler / tesseract を呼ぶ。依存パッケージは増やしていない)。読書アプリなので効果音(`sound.ts`)は持たない
 
 ## 基本方針
 
@@ -40,8 +40,9 @@ Vite + TypeScript + vite-plugin-pwa + Vitest + Playwright + ESLint。UI フレ�
 
 ## 構成
 
-- `src/logic.ts`: ルール・計算。DOM に触れない純関数にして `tests/` で単体テストする。
-- `src/main.ts`: DOM の操作だけ。`src/sound.ts`(効果音)、`src/storage.ts`(保存)、`src/pwa.ts`(更新ボタン)、`src/install.ts`(インストール方法の説明)。
+- `src/book.ts`: 本ファイルの解析・しおり・設定。DOM に触れない純関数にして `tests/` で単体テストする(このアプリの `logic.ts` にあたる)。
+- `src/main.ts`(本棚・配線)、`src/reader.ts`(読書画面)、`src/library.ts`(本の保管庫 IndexedDB)、`src/storage.ts`(しおり・設定)、`src/pwa.ts`(更新ボタン)、`src/install.ts`(インストール方法の説明)。
+- `scripts/pdf2book.ts` / `scripts/ocr-text.ts`: PDF → 本ファイルの変換(パソコンで実行)。
 - `vite.config.ts`: アプリ名・色・manifest。`index.html` の `theme-color`・タイトルと合わせて書き換える。
 - `scripts/check-dist.mjs`: ビルド成果物が PWA として成立しているかの検査。
 - 画面の部品や機能を足すときは、ファイルを `src/` に分ける。Service Worker のファイル一覧は**自動生成**なので手で更新しない。

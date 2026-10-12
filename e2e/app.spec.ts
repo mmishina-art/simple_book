@@ -1,28 +1,123 @@
 import { readFileSync } from 'node:fs';
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
-// アプリの ID（package.json の name）。保存データのキーの接頭辞になる
+// アプリの ID(package.json の name)。保存データのキーの接頭辞になる
 const APP_ID = (JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { name: string }).name;
 
-test('タップで数が増え、最高記録が残る', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: 'タップ' }).click();
-  await page.getByRole('button', { name: 'タップ' }).click();
-  await expect(page.locator('#count')).toHaveText('2');
-  await page.getByRole('button', { name: 'リセット' }).click();
-  await expect(page.locator('#count')).toHaveText('0');
-  await expect(page.locator('#best')).toHaveText('2');
+/** 短い本。章が 2 つ */
+const SHORT = `# テストの本
 
-  await page.reload();
-  await expect(page.locator('#best')).toHaveText('2');
+<!-- page 1 -->
+
+## 第一章
+
+最初の段落です。
+
+次の段落です。
+
+## 第二章
+
+二つ目の章の本文です。
+`;
+
+/** 長い本(スクロールが必要)。段落 60 個 */
+const LONG = ['# 長い本', ...Array.from({ length: 60 }, (_, i) => `## 節${i + 1}\n\n${'これは長い本の本文です。'.repeat(12)}(${i + 1})`)].join('\n\n');
+
+async function addBook(page: Page, text: string, name = 'book.md'): Promise<void> {
+  await page.locator('#book-import').setInputFiles({ name, mimeType: 'text/markdown', buffer: Buffer.from(text) });
+}
+
+test('本を追加して開き、本文を読んで、本棚に戻れる', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('#empty-message')).toBeVisible();
+  await addBook(page, SHORT);
+  await expect(page.locator('#import-message')).toHaveText('1 冊を追加しました');
+  await expect(page.locator('#empty-message')).toBeHidden();
+
+  await page.getByRole('button', { name: /テストの本/ }).first().click();
+  await expect(page.locator('#reader')).toBeVisible();
+  await expect(page.locator('#shelf')).toBeHidden();
+  await expect(page.locator('#reader-title')).toHaveText('テストの本');
+  await expect(page.getByText('最初の段落です。')).toBeVisible();
+  await expect(page.getByText('p.1')).toBeVisible();
+
+  await page.getByRole('button', { name: '本棚にもどる' }).click();
+  await expect(page.locator('#shelf')).toBeVisible();
+  await expect(page.locator('#reader')).toBeHidden();
 });
 
-test('音のオン/オフを切り替えられる', async ({ page }) => {
+test('取り込んだ本は、再読み込みしても残る(オフライン用の保存)', async ({ page }) => {
   await page.goto('/');
-  const button = page.locator('#sound-button');
-  await expect(button).toHaveAttribute('aria-pressed', 'true');
-  await button.click();
-  await expect(button).toHaveAttribute('aria-pressed', 'false');
+  await addBook(page, SHORT);
+  await expect(page.locator('#book-list')).toContainText('テストの本');
+  await page.reload();
+  await expect(page.locator('#book-list')).toContainText('テストの本');
+});
+
+test('読んだ位置(しおり)を覚えていて、開き直すと続きから読める', async ({ page }) => {
+  await page.goto('/');
+  await addBook(page, LONG);
+  await page.getByRole('button', { name: /長い本/ }).first().click();
+  await page.locator('h3', { hasText: '節30' }).scrollIntoViewIfNeeded();
+  await page.evaluate(() => window.scrollBy(0, 5));
+  // スクロールが止まってから保存される
+  await expect.poll(() => page.evaluate((id) => localStorage.getItem(`${id}-pos`), APP_ID)).toContain('"i"');
+  const saved = await page.evaluate((id) => JSON.parse(localStorage.getItem(`${id}-pos`) ?? '{}') as Record<string, { i: number }>, APP_ID);
+  expect(Object.values(saved)[0].i).toBeGreaterThan(20);
+
+  await page.reload();
+  await expect(page.locator('#book-list')).toContainText('% まで読んだ');
+  await page.getByRole('button', { name: /長い本/ }).first().click();
+  await expect(page.locator('h3', { hasText: '節30' })).toBeInViewport();
+});
+
+test('目次から章に飛べる', async ({ page }) => {
+  await page.goto('/');
+  await addBook(page, LONG);
+  await page.getByRole('button', { name: /長い本/ }).first().click();
+  await page.getByRole('button', { name: '目次' }).click();
+  await page.locator('#toc-list').getByRole('button', { name: '節40', exact: true }).click();
+  await expect(page.locator('h3', { hasText: /^節40$/ })).toBeInViewport();
+});
+
+test('文字の大きさと色の設定が保存される', async ({ page }) => {
+  await page.goto('/');
+  await addBook(page, SHORT);
+  await page.getByRole('button', { name: /テストの本/ }).first().click();
+  await page.getByRole('button', { name: '文字と明るさの設定' }).click();
+  await page.getByRole('button', { name: '文字を大きく' }).click();
+  await page.getByRole('button', { name: 'セピア' }).click();
+  await expect(page.locator('#font-size')).toHaveText('20');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'sepia');
+  await expect(page.getByRole('button', { name: 'セピア' })).toHaveAttribute('aria-pressed', 'true');
+
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'sepia');
+  await page.getByRole('button', { name: /テストの本/ }).first().click();
+  await expect(page.locator('#reader-body')).toHaveCSS('font-size', '20px');
+});
+
+test('本文のタグは文字として表示され、動かない', async ({ page }) => {
+  await page.goto('/');
+  await addBook(page, '# <img src=x onerror="window.__xss=1">\n\n<script>window.__xss=1</script>');
+  await page.getByRole('button', { name: /img/ }).first().click();
+  await expect(page.getByText('<script>window.__xss=1</script>')).toBeVisible();
+  expect(await page.evaluate(() => (window as unknown as { __xss?: number }).__xss)).toBeUndefined();
+});
+
+test('本ではないファイルは、理由を出して断る', async ({ page }) => {
+  await page.goto('/');
+  await addBook(page, '# 題だけ', 'empty.md');
+  await expect(page.locator('#import-message')).toContainText('empty.md: 本文が見つかりません');
+  await expect(page.locator('#empty-message')).toBeVisible();
+});
+
+test('本を削除できる', async ({ page }) => {
+  await page.goto('/');
+  await addBook(page, SHORT);
+  page.once('dialog', (d) => void d.accept());
+  await page.getByRole('button', { name: '「テストの本」を削除' }).click();
+  await expect(page.locator('#empty-message')).toBeVisible();
 });
 
 test('manifest と Service Worker が使える', async ({ page }) => {
@@ -34,80 +129,4 @@ test('manifest と Service Worker が使える', async ({ page }) => {
     return !!reg.active;
   });
   expect(registered).toBe(true);
-});
-
-test('更新バナーは通常は隠れている', async ({ page }) => {
-  await page.goto('/');
-  await expect(page.locator('#update-banner')).toBeHidden();
-});
-
-test('最初の画面からインストール方法を開ける（使っている端末の説明が開いている）', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /インストールする方法/ }).click();
-  const dialog = page.locator('#install-dialog');
-  await expect(dialog).toBeVisible();
-  // Pixel 7 のプロファイルなので Android の説明が開いている
-  await expect(dialog.locator('details[data-platform="android"]')).toHaveJSProperty('open', true);
-  await expect(dialog.locator('details[data-platform="ios"]')).toHaveJSProperty('open', false);
-  await expect(dialog.getByText('ホーム画面に追加', { exact: false }).first()).toBeVisible();
-  await dialog.getByRole('button', { name: 'とじる' }).click();
-  await expect(dialog).toBeHidden();
-});
-
-test('最初の画面にバージョンが表示される', async ({ page }) => {
-  await page.goto('/');
-  await expect(page.locator('#version')).toHaveText(/^\d+\.\d+\.\d+$/);
-});
-
-test('記録をファイルに書き出し、消えたあとに読み込んで戻せる', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: 'タップ' }).click();
-  await page.getByRole('button', { name: 'タップ' }).click();
-  await page.getByText('記録のバックアップ').click();
-
-  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'ファイルに書き出す' }).click()]);
-  const path = await download.path();
-  const { readFileSync } = await import('node:fs');
-  const text = readFileSync(path, 'utf8');
-  expect(JSON.parse(text).data[`${APP_ID}-best`]).toBe('2');
-
-  // 記録を消す → 読み込んで戻す
-  await page.evaluate(() => localStorage.clear());
-  await page.reload();
-  await expect(page.locator('#best')).toHaveText('0');
-  await page.getByText('記録のバックアップ').click();
-  await page.locator('#backup-import').setInputFiles({ name: 'backup.json', mimeType: 'application/json', buffer: Buffer.from(text) });
-  await expect(page.locator('#best')).toHaveText('2');
-  await expect(page.locator('#backup-message')).toContainText('読み込みました');
-});
-
-test('おかしいバックアップファイルは、理由を表示して読み込まない', async ({ page }) => {
-  await page.goto('/');
-  await page.getByText('記録のバックアップ').click();
-  await page.locator('#backup-import').setInputFiles({ name: 'bad.json', mimeType: 'application/json', buffer: Buffer.from('{"app":"other"}') });
-  await expect(page.locator('#backup-message')).toContainText('このアプリのバックアップではありません');
-  await expect(page.locator('#best')).toHaveText('0');
-});
-
-test('起動できないときは「なおす」ボタンが出て、押すと起動できる（記録と、ほかのアプリのキャッシュは消えない）', async ({ page }) => {
-  await page.addInitScript((id) => {
-    (window as unknown as { __bootWaitMs: number }).__bootWaitMs = 500;
-    // 1回目の自動修復は済んだことにして、ボタンが出る側の動きを確かめる
-    sessionStorage.setItem(`${id}:repaired-at`, String(Date.now()));
-    if (!localStorage.getItem(`${id}-best`)) localStorage.setItem(`${id}-best`, '5');
-  }, APP_ID);
-  // 同じサイトにある、ほかのアプリのキャッシュ（なおすときに消えてはいけない）を用意する
-  await page.goto('/');
-  await page.evaluate(async () => { await caches.open('other-app-v1'); });
-  // メインのスクリプトが読み込めない状況を作る
-  await page.route('**/assets/*.js', (route) => route.abort());
-  await page.goto('/');
-  await expect(page.locator('#boot-error')).toBeVisible();
-
-  await page.unroute('**/assets/*.js');
-  await page.getByRole('button', { name: 'なおす' }).click();
-  await expect(page.locator('#best')).toHaveText('5');
-  await expect(page.locator('#boot-error')).toBeHidden();
-  // このアプリのキャッシュだけが作り直され、ほかのアプリのキャッシュは残っている
-  expect(await page.evaluate(() => caches.has('other-app-v1'))).toBe(true);
 });
