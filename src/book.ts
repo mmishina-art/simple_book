@@ -96,16 +96,19 @@ export function clampIndex(index: unknown, total: number): number {
 
 export type ThemeName = 'auto' | 'light' | 'dark' | 'sepia';
 export type FontName = 'serif' | 'sans';
+export type Direction = 'vertical' | 'horizontal';
 
 export interface ReaderSettings {
   fontSize: number;
   theme: ThemeName;
   font: FontName;
+  /** 小説が中心なので、既定は縦書き */
+  direction: Direction;
 }
 
 export const FONT_MIN = 14;
 export const FONT_MAX = 32;
-export const DEFAULT_SETTINGS: ReaderSettings = { fontSize: 18, theme: 'auto', font: 'serif' };
+export const DEFAULT_SETTINGS: ReaderSettings = { fontSize: 18, theme: 'auto', font: 'serif', direction: 'vertical' };
 
 export function normalizeSettings(raw: unknown): ReaderSettings {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Partial<ReaderSettings>;
@@ -114,5 +117,6 @@ export function normalizeSettings(raw: unknown): ReaderSettings {
     fontSize: Math.min(Math.max(size, FONT_MIN), FONT_MAX),
     theme: r.theme === 'light' || r.theme === 'dark' || r.theme === 'sepia' ? r.theme : 'auto',
     font: r.font === 'sans' ? 'sans' : 'serif',
+    direction: r.direction === 'horizontal' ? 'horizontal' : 'vertical',
   };
 }

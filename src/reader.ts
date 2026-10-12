@@ -23,24 +23,40 @@ let lastReported = -1;
 
 const body = (): HTMLElement => $('reader-body');
 const bar = (): HTMLElement => document.querySelector<HTMLElement>('.reader-bar') as HTMLElement;
-const top = (el: HTMLElement): number => el.getBoundingClientRect().top + window.scrollY;
 
-/** いま画面の上に見えているブロックの番号 */
+const vertical = (): boolean => settings.direction === 'vertical';
+
+/** いま読んでいる(画面の先頭にある)ブロックの番号。
+ *  横書き: 上端から。縦書き: 右端から(縦書きは右から左へ進み、本文の枠の中を横にスクロールする) */
 function currentIndex(): number {
-  const line = window.scrollY + bar().offsetHeight + 4;
+  const box = body().getBoundingClientRect();
+  const v = vertical();
+  const line = v ? box.right - 4 : bar().offsetHeight + 4;
+  // 先頭に近い順に並んでいるので、二分探索で「まだ先頭を過ぎていない最初のブロック」を探す
+  const passed = (el: HTMLElement): boolean => {
+    const r = el.getBoundingClientRect();
+    return v ? r.left >= line : r.bottom <= line;
+  };
   let lo = 0;
   let hi = els.length - 1;
   while (lo < hi) {
-    const mid = (lo + hi + 1) >> 1;
-    if (top(els[mid]) <= line) lo = mid;
-    else hi = mid - 1;
+    const mid = (lo + hi) >> 1;
+    if (passed(els[mid])) lo = mid + 1;
+    else hi = mid;
   }
   return lo;
 }
 
 export function scrollToIndex(index: number): void {
   const el = els[clampIndex(index, els.length)];
-  if (el) window.scrollTo(0, Math.max(0, top(el) - bar().offsetHeight));
+  if (!el) return;
+  const r = el.getBoundingClientRect();
+  if (vertical()) {
+    // 縦書きの scrollLeft は、右端が 0 で左へ進むほど負になる。ブロックの右端を、枠の右端に合わせる
+    body().scrollLeft += r.right - body().getBoundingClientRect().right;
+  } else {
+    window.scrollTo(0, Math.max(0, r.top + window.scrollY - bar().offsetHeight));
+  }
 }
 
 function report(): void {
@@ -73,9 +89,11 @@ export function applySettings(next: ReaderSettings): void {
   else root.dataset.theme = next.theme;
   body().style.setProperty('--reader-size', `${next.fontSize}px`);
   body().dataset.font = next.font;
+  $('reader').dataset.direction = next.direction;
   $('font-size').textContent = String(next.fontSize);
   $<HTMLButtonElement>('font-down').disabled = next.fontSize <= FONT_MIN;
   $<HTMLButtonElement>('font-up').disabled = next.fontSize >= FONT_MAX;
+  for (const b of document.querySelectorAll<HTMLElement>('[data-direction]')) b.setAttribute('aria-pressed', String(b.dataset.direction === next.direction));
   for (const b of document.querySelectorAll<HTMLElement>('[data-font]')) b.setAttribute('aria-pressed', String(b.dataset.font === next.font));
   for (const b of document.querySelectorAll<HTMLElement>('[data-theme-choice]')) b.setAttribute('aria-pressed', String(b.dataset.themeChoice === next.theme));
 }
@@ -97,6 +115,7 @@ export function setupReader(initial: ReaderSettings, h: ReaderHooks): void {
   applySettings(initial);
 
   window.addEventListener('scroll', onScroll, { passive: true });
+  body().addEventListener('scroll', onScroll, { passive: true });
   window.addEventListener('pagehide', flush);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') flush();
@@ -125,6 +144,9 @@ export function setupReader(initial: ReaderSettings, h: ReaderHooks): void {
   $('settings-open').addEventListener('click', () => openDialog('settings-dialog'));
   $('font-down').addEventListener('click', () => change({ ...settings, fontSize: settings.fontSize - 2 }));
   $('font-up').addEventListener('click', () => change({ ...settings, fontSize: settings.fontSize + 2 }));
+  for (const b of document.querySelectorAll<HTMLElement>('[data-direction]')) {
+    b.addEventListener('click', () => change({ ...settings, direction: b.dataset.direction === 'horizontal' ? 'horizontal' : 'vertical' }));
+  }
   for (const b of document.querySelectorAll<HTMLElement>('[data-font]')) {
     b.addEventListener('click', () => change({ ...settings, font: b.dataset.font === 'sans' ? 'sans' : 'serif' }));
   }

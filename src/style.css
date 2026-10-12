@@ -402,7 +402,8 @@ button.link {
 .reader-body h2,
 .reader-body h3,
 .reader-body h4 {
-  margin: 0 0 0.9em;
+  margin: 0;
+  margin-block-end: 0.9em;
   overflow-wrap: anywhere;
 }
 
@@ -413,24 +414,24 @@ button.link {
 
 .reader-body h2 {
   font-size: 1.4em;
-  margin-top: 1.4em;
+  margin-block-start: 1.4em;
 }
 
 .reader-body h3 {
   font-size: 1.2em;
-  margin-top: 1.6em;
+  margin-block-start: 1.6em;
 }
 
 .reader-body h4 {
   font-size: 1.05em;
-  margin-top: 1.2em;
+  margin-block-start: 1.2em;
 }
 
 .b-page {
   font-size: 0.7em;
   text-align: center;
   color: var(--muted);
-  margin: 1.2em 0 0.6em;
+  margin-block: 1.2em 0.6em;
 }
 
 .reader-foot {
@@ -523,4 +524,33 @@ button.link {
 .theme-buttons button {
   padding-left: 4px;
   padding-right: 4px;
+}
+
+/* ---- 縦書き ----
+   本文の枠(#reader-body)が、画面いっぱいの高さで、横にスクロールする。右から左へ読み進む。 */
+.reader[data-direction='vertical'] {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.reader[data-direction='vertical'] .reader-body {
+  flex: 1;
+  min-height: 0;
+  max-width: none;
+  margin: 0;
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  writing-mode: vertical-rl;
+  line-height: 1.8;
+  /* 縦の余白: 文字が枠の上下にくっつかないように。下はページ表示を避ける */
+  padding: 20px max(20px, env(safe-area-inset-right)) max(40px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+  overscroll-behavior-x: contain;
+}
+
+.reader[data-direction='vertical'] .b-page {
+  text-combine-upright: digits 3;
+  margin-block: 0;
+  margin-inline: 0.6em 0.3em;
 }

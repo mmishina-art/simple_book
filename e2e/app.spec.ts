@@ -23,11 +23,19 @@ const SHORT = `# テストの本
 /** 長い本(スクロールが必要)。段落 60 個 */
 const LONG = ['# 長い本', ...Array.from({ length: 60 }, (_, i) => `## 節${i + 1}\n\n${'これは長い本の本文です。'.repeat(12)}(${i + 1})`)].join('\n\n');
 
+/** 既定は縦書き。横書きの動きを見るテストは、保存された設定がないときだけ横書きにしておく */
+async function useHorizontal(page: Page): Promise<void> {
+  await page.addInitScript((key) => {
+    if (localStorage.getItem(key) === null) localStorage.setItem(key, JSON.stringify({ fontSize: 18, theme: 'auto', font: 'serif', direction: 'horizontal' }));
+  }, `${APP_ID}-settings`);
+}
+
 async function addBook(page: Page, text: string, name = 'book.md'): Promise<void> {
   await page.locator('#book-import').setInputFiles({ name, mimeType: 'text/markdown', buffer: Buffer.from(text) });
 }
 
 test('本を追加して開き、本文を読んで、本棚に戻れる', async ({ page }) => {
+  await useHorizontal(page);
   await page.goto('/');
   await expect(page.locator('#empty-message')).toBeVisible();
   await addBook(page, SHORT);
@@ -55,6 +63,7 @@ test('取り込んだ本は、再読み込みしても残る(オフライン用�
 });
 
 test('読んだ位置(しおり)を覚えていて、開き直すと続きから読める', async ({ page }) => {
+  await useHorizontal(page);
   await page.goto('/');
   await addBook(page, LONG);
   await page.getByRole('button', { name: /長い本/ }).first().click();
@@ -72,6 +81,7 @@ test('読んだ位置(しおり)を覚えていて、開き直すと続きから
 });
 
 test('目次から章に飛べる', async ({ page }) => {
+  await useHorizontal(page);
   await page.goto('/');
   await addBook(page, LONG);
   await page.getByRole('button', { name: /長い本/ }).first().click();
@@ -95,6 +105,38 @@ test('文字の大きさと色の設定が保存される', async ({ page }) => 
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'sepia');
   await page.getByRole('button', { name: /テストの本/ }).first().click();
   await expect(page.locator('#reader-body')).toHaveCSS('font-size', '20px');
+});
+
+test('縦書きが既定で、右から左へ横にスクロールして読める', async ({ page }) => {
+  await page.goto('/');
+  await addBook(page, LONG);
+  await page.getByRole('button', { name: /長い本/ }).first().click();
+  await expect(page.locator('#reader-body')).toHaveCSS('writing-mode', 'vertical-rl');
+  // 最初は右端(書名)が見えている
+  await expect(page.locator('.b-h1')).toBeInViewport();
+  await page.getByRole('button', { name: '目次' }).click();
+  await page.locator('#toc-list').getByRole('button', { name: '節40', exact: true }).click();
+  await expect(page.locator('h3', { hasText: /^節40$/ })).toBeInViewport();
+  await expect(page.locator('.b-h1')).not.toBeInViewport();
+
+  // しおり: 開き直すと、同じ節から読める
+  await expect.poll(() => page.evaluate((id) => localStorage.getItem(`${id}-pos`), APP_ID)).toContain('"i"');
+  await page.reload();
+  await page.getByRole('button', { name: /長い本/ }).first().click();
+  await expect(page.locator('h3', { hasText: /^節40$/ })).toBeInViewport();
+});
+
+test('縦書きと横書きを切り替えても、読んでいる場所が変わらない', async ({ page }) => {
+  await page.goto('/');
+  await addBook(page, LONG);
+  await page.getByRole('button', { name: /長い本/ }).first().click();
+  await page.getByRole('button', { name: '目次' }).click();
+  await page.locator('#toc-list').getByRole('button', { name: '節20', exact: true }).click();
+  await page.getByRole('button', { name: '文字と明るさの設定' }).click();
+  await page.getByRole('button', { name: '横書き' }).click();
+  await expect(page.locator('#reader-body')).toHaveCSS('writing-mode', 'horizontal-tb');
+  await page.getByRole('button', { name: 'とじる' }).last().click();
+  await expect(page.locator('h3', { hasText: /^節20$/ })).toBeInViewport();
 });
 
 test('本文のタグは文字として表示され、動かない', async ({ page }) => {

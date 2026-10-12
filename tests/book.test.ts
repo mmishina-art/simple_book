@@ -77,11 +77,11 @@ describe('progressPercent / clampIndex', () => {
 
 describe('normalizeSettings', () => {
   it('壊れた設定は既定値に戻す', () => {
-    expect(normalizeSettings(null)).toEqual({ fontSize: 18, theme: 'auto', font: 'serif' });
-    expect(normalizeSettings({ fontSize: 999, theme: 'neon', font: 'x' })).toEqual({ fontSize: 32, theme: 'auto', font: 'serif' });
+    expect(normalizeSettings(null)).toEqual({ fontSize: 18, theme: 'auto', font: 'serif', direction: 'vertical' });
+    expect(normalizeSettings({ fontSize: 999, theme: 'neon', font: 'x' })).toEqual({ fontSize: 32, theme: 'auto', font: 'serif', direction: 'vertical' });
   });
 
   it('正しい設定は保つ', () => {
-    expect(normalizeSettings({ fontSize: 22, theme: 'sepia', font: 'sans' })).toEqual({ fontSize: 22, theme: 'sepia', font: 'sans' });
+    expect(normalizeSettings({ fontSize: 22, theme: 'sepia', font: 'sans', direction: 'horizontal' })).toEqual({ fontSize: 22, theme: 'sepia', font: 'sans', direction: 'horizontal' });
   });
 });
