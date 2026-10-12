@@ -81,10 +81,12 @@
         <div class="row" role="group" aria-label="文字の向き">
           <span>本の向き</span>
           <span>
-            <button type="button" data-convert-dir="vertical" aria-pressed="true">縦書き</button>
+            <button type="button" data-convert-dir="auto" aria-pressed="true">自動</button>
+            <button type="button" data-convert-dir="vertical" aria-pressed="false">縦書き</button>
             <button type="button" data-convert-dir="horizontal" aria-pressed="false">横書き</button>
           </span>
         </div>
+        <label class="field">試しに先頭の何ページだけ変換する?(空欄で全部) <input id="convert-max-pages" type="number" inputmode="numeric" min="1" placeholder="例: 5"></label>
         <label class="check"><input id="convert-cover" type="checkbox" checked> 1 ページ目を表紙の画像にする</label>
         <label class="check"><input id="convert-illustrations" type="checkbox" checked> 文字の少ないページ(挿絵・扉)を画像で残す</label>
         <label class="check"><input id="convert-headings" type="checkbox" checked> 見出し(第一章 など)を自動で付ける</label>
