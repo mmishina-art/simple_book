@@ -166,10 +166,11 @@ test.describe('PDF から本を作る(OCR)', () => {
   // OCR(wasm)は時間がかかるので、タイムアウトを長めにする
   test.setTimeout(180_000);
 
-  async function convert(page: Page, pdf: string, direction: '自動' | '縦書き' | '横書き'): Promise<void> {
+  async function convert(page: Page, pdf: string, direction: '自動' | '縦書き' | '横書き', cover = true): Promise<void> {
     await page.goto('/');
     await page.getByRole('button', { name: /PDF から本を作る/ }).click();
     await page.locator('#convert-file').setInputFiles(new URL(`./fixtures/${pdf}`, import.meta.url).pathname);
+    if (!cover) await page.locator('#convert-cover').uncheck();
     await page.locator('#convert-dialog').getByRole('button', { name: direction, exact: true }).click();
     await page.getByRole('button', { name: '変換をはじめる' }).click();
     await expect(page.locator('#convert-result')).toContainText('本棚に追加しました', { timeout: 150_000 });
@@ -207,7 +208,7 @@ test.describe('PDF から本を作る(OCR)', () => {
 
   // 自炊 PDF でよく使われる JPEG2000 の画像。pdf.js の復号用 wasm(wasmUrl)がないと、白紙として描画されて「本文なし」になる
   test('JPEG2000 の画像の PDF を変換できる', async ({ page }) => {
-    await convert(page, 'jpx.pdf', '横書き');
+    await convert(page, 'jpx.pdf', '横書き', false); // 1 ページだけの PDF なので、表紙にしない
     await page.locator('#convert-dialog').getByRole('button', { name: 'とじる' }).click();
     await page.getByRole('button', { name: /jpx/ }).first().click();
     await expect(page.locator('#reader-body')).toContainText('公園');

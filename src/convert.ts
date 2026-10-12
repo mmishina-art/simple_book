@@ -205,6 +205,7 @@ export async function convertPdf(file: File, o: ConvertOptions): Promise<Convert
 
   // 文字を読み取れたページが、ほとんどないとき: 本にせず、原因を伝える(画像だらけの本ができてしまうのを防ぐ)
   const attempted = total - (cover ? 1 : 0);
+  if (attempted === 0) throw new Error('本文にするページがありません(1 ページ目を表紙にしたためです)。「1 ページ目を表紙の画像にする」を外すか、ページ数を増やしてください。');
   const textPages = pages.filter((p) => p.paragraphs.join('').length >= ILLUSTRATION_MAX_CHARS).length;
   if (attempted > 0 && textPages / attempted < 0.1) {
     const stats = `(${attempted} ページ中、文字を読み取れたページ ${textPages}、白紙と判断したページ ${blanks.size})`;
