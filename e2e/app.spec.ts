@@ -166,7 +166,7 @@ test.describe('PDF から本を作る(OCR)', () => {
   // OCR(wasm)は時間がかかるので、タイムアウトを長めにする
   test.setTimeout(180_000);
 
-  async function convert(page: Page, pdf: string, direction: '縦書き' | '横書き'): Promise<void> {
+  async function convert(page: Page, pdf: string, direction: '自動' | '縦書き' | '横書き'): Promise<void> {
     await page.goto('/');
     await page.getByRole('button', { name: /PDF から本を作る/ }).click();
     await page.locator('#convert-file').setInputFiles(new URL(`./fixtures/${pdf}`, import.meta.url).pathname);
@@ -195,6 +195,44 @@ test.describe('PDF から本を作る(OCR)', () => {
     await page.locator('#convert-dialog').getByRole('button', { name: 'とじる' }).click();
     await page.getByRole('button', { name: /vertical/ }).first().click();
     await expect(page.locator('#reader-body')).toContainText('公園');
+  });
+
+  test('本の向きを自動で判定する(横書き・縦書き)', async ({ page }) => {
+    await convert(page, 'horizontal.pdf', '自動');
+    await expect(page.locator('#convert-result')).toContainText('横書きと判定');
+    await page.reload();
+    await convert(page, 'vertical.pdf', '自動');
+    await expect(page.locator('#convert-result')).toContainText('縦書きと判定');
+  });
+
+  // 自炊 PDF でよく使われる JPEG2000 の画像。pdf.js の復号用 wasm(wasmUrl)がないと、白紙として描画されて「本文なし」になる
+  test('JPEG2000 の画像の PDF を変換できる', async ({ page }) => {
+    await convert(page, 'jpx.pdf', '横書き');
+    await page.locator('#convert-dialog').getByRole('button', { name: 'とじる' }).click();
+    await page.getByRole('button', { name: /jpx/ }).first().click();
+    await expect(page.locator('#reader-body')).toContainText('公園');
+  });
+
+  test('先頭の数ページだけ変換できる', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: /PDF から本を作る/ }).click();
+    await page.locator('#convert-file').setInputFiles(new URL('./fixtures/horizontal.pdf', import.meta.url).pathname);
+    await page.locator('#convert-max-pages').fill('2');
+    await page.locator('#convert-dialog').getByRole('button', { name: '横書き', exact: true }).click();
+    await page.getByRole('button', { name: '変換をはじめる' }).click();
+    await expect(page.locator('#convert-result')).toContainText('2 ページ', { timeout: 60_000 });
+  });
+
+  test('文字も画像も読み取れないときは、原因を伝えて本にしない', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: /PDF から本を作る/ }).click();
+    await page.locator('#convert-file').setInputFiles(new URL('./fixtures/blank.pdf', import.meta.url).pathname);
+    await page.locator('#convert-cover').uncheck();
+    await page.locator('#convert-dialog').getByRole('button', { name: '横書き', exact: true }).click();
+    await page.getByRole('button', { name: '変換をはじめる' }).click();
+    await expect(page.locator('#convert-error')).toContainText('読み取れませんでした', { timeout: 60_000 });
+    await page.locator('#convert-dialog').getByRole('button', { name: 'とじる' }).click();
+    await expect(page.locator('#empty-message')).toBeVisible();
   });
 
   test('PDF ではないファイルは、理由を出して断る', async ({ page }) => {
