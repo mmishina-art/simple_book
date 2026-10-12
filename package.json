@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "node scripts/copy-ocr-assets.mjs",
     "dev": "vite",
+    "prebuild": "node scripts/copy-ocr-assets.mjs",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
@@ -18,9 +20,13 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.64.0",
+    "@tesseract.js-data/jpn": "^1.0.0",
+    "@tesseract.js-data/jpn_vert": "^1.0.0",
     "@types/node": "^24.19.2",
     "eslint": "^10.12.0",
     "globals": "^17.13.0",
+    "pdfjs-dist": "^6.4.299",
+    "tesseract.js": "^7.0.0",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.71.1",
     "vite": "^8.3.4",

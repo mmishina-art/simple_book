@@ -1,4 +1,5 @@
 // OCR の生の出力を、スマホで読みやすい文章に整える。DOM にも外部コマンドにも触れない純関数(tests/ocr-text.test.ts でテスト)。
+// ブラウザの「PDF を変換」画面(src/convert.ts)と、パソコンのコマンド(scripts/pdf2book.ts)の両方が使う。
 
 // 日本語の文字(ひらがな・カタカナ・漢字・全角記号など)。Tesseract は文字の間に半角スペースを入れがちなので、その除去に使う
 const CJK = '\\u3000-\\u303f\\u3040-\\u30ff\\u3400-\\u9fff\\uff00-\\uffef';
@@ -42,16 +43,41 @@ function headingKind(p: string): 'big' | 'small' | 'number' | null {
   return null;
 }
 
-/** 書名とページごとの段落から、本ファイル(簡易 Markdown。形式は src/book.ts)を作る。detect が true なら、見出しを自動で付ける */
-export function buildBookMarkdown(title: string, pages: string[][], detect = true): string {
-  const kinds = detect ? pages.map((paragraphs) => paragraphs.map(headingKind)) : [];
+/** 変換したページ1枚ぶん。image があれば、本文の代わりに(または本文に加えて)その画像を入れる */
+export interface PageContent {
+  paragraphs: string[];
+  /** 挿絵・扉絵などの画像(data: URL) */
+  image?: string;
+}
+
+/** 画像のページにするかの判定: OCR の文字が少なく(表紙・扉・挿絵)、見出しでもなく、白紙でもない */
+export const ILLUSTRATION_MAX_CHARS = 30;
+export function isIllustrationPage(paragraphs: string[], blank: boolean): boolean {
+  if (blank) return false;
+  if (paragraphs.some((p) => headingKind(p) !== null)) return false;
+  return paragraphs.join('').length < ILLUSTRATION_MAX_CHARS;
+}
+
+export interface BuildOptions {
+  /** 見出しを自動で付ける(既定 true) */
+  detect?: boolean;
+  /** 表紙の画像(data: URL)。書名の下に入れる */
+  cover?: string;
+}
+
+/** 書名とページごとの内容から、本ファイル(簡易 Markdown。形式は src/book.ts)を作る */
+export function buildBookMarkdown(title: string, pages: PageContent[], options: BuildOptions = {}): string {
+  const detect = options.detect ?? true;
+  const kinds = detect ? pages.map((page) => page.paragraphs.map(headingKind)) : [];
   // 「第一章」のような大きな区切りがある本では、漢数字だけの行はその下の小見出し(###)。なければ章(##)。
   const hasBig = kinds.some((row) => row.includes('big'));
   const out: string[] = [`# ${title.replace(/\s+/g, ' ').trim() || '無題'}`];
-  pages.forEach((paragraphs, i) => {
-    if (paragraphs.length === 0) return;
+  if (options.cover) out.push(`<!-- cover: ${options.cover} -->`);
+  pages.forEach((page, i) => {
+    if (page.paragraphs.length === 0 && !page.image) return;
     out.push(`<!-- page ${i + 1} -->`);
-    paragraphs.forEach((p, j) => {
+    if (page.image) out.push(`![挿絵 p.${i + 1}](${page.image})`);
+    page.paragraphs.forEach((p, j) => {
       // 行頭が # の段落は、見出しと取り違えられないよう目印を外す
       const text = p.replace(/^#+\s*/, '');
       const kind = kinds[i]?.[j] ?? null;

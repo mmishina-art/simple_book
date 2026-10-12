@@ -3,14 +3,19 @@
 // 本ファイルの形式:
 //   # 書名            ← 最初の「# 」の行が書名
 //   ## 第1章          ← 「## 」「### 」は見出し(目次になる)
+//   <!-- cover: data:image/jpeg;base64,… -->  ← 表紙の画像(書名の下に表示。本棚のサムネイルにもなる)
 //   <!-- page 12 -->  ← 元の本のページ区切り(目印として薄く表示)
+//   ![挿絵](data:image/jpeg;base64,…)  ← 挿絵・扉絵などの画像(data: の画像だけ。外部の画像は読み込まない)
 //   本文…             ← 空行で区切ったかたまりが段落
 
-export type BlockKind = 'h1' | 'h2' | 'h3' | 'p' | 'page';
+export type BlockKind = 'h1' | 'h2' | 'h3' | 'p' | 'page' | 'image';
 
 export interface Block {
   kind: BlockKind;
+  /** 本文・見出し・ページ番号。画像のときは、読み上げ用の説明(alt) */
   text: string;
+  /** 画像のとき: data: URL */
+  src?: string;
 }
 
 export interface TocEntry {
@@ -21,6 +26,8 @@ export interface TocEntry {
 
 export interface Book {
   title: string;
+  /** 表紙の画像(data: URL)。なければ undefined */
+  cover?: string;
   blocks: Block[];
   toc: TocEntry[];
 }
@@ -28,12 +35,18 @@ export interface Book {
 /** 取り込める本ファイルの大きさの上限(バイト)。文庫本数十冊ぶんでも 1 冊は 10MB に届かない */
 export const MAX_BOOK_BYTES = 30 * 1024 * 1024;
 
+/** 埋め込める画像は、data: の jpeg / png / webp だけ(外部の URL や、スクリプトになりうる形式は受け付けない) */
+const DATA_IMAGE = 'data:image\\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+';
+export const isDataImage = (src: string): boolean => new RegExp(`^${DATA_IMAGE}$`).test(src);
+const COVER_RE = new RegExp(`^<!--\\s*cover\\s*:\\s*(${DATA_IMAGE})\\s*-->$`);
+const IMAGE_RE = new RegExp(`^!\\[([^\\]]*)\\]\\((${DATA_IMAGE})\\)$`);
 const PAGE_RE = /^<!--\s*page\s*:?\s*(\S+?)\s*-->$/i;
 
 export function parseBook(source: string, fileName = ''): Book {
   const lines = source.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').split('\n');
   const blocks: Block[] = [];
   let para: string[] = [];
+  let coverSrc: string | undefined;
   const flush = (): void => {
     if (para.length > 0) blocks.push({ kind: 'p', text: para.join('\n') });
     para = [];
@@ -41,10 +54,19 @@ export function parseBook(source: string, fileName = ''): Book {
 
   for (const raw of lines) {
     const line = raw.trim();
+    const cover = COVER_RE.exec(line);
+    const image = IMAGE_RE.exec(line);
     const page = PAGE_RE.exec(line);
     const heading = /^(#{1,3})\s+(.+)$/.exec(line);
     if (line === '') {
       flush();
+    } else if (cover) {
+      flush();
+      coverSrc = cover[1];
+      blocks.push({ kind: 'image', text: '表紙', src: cover[1] });
+    } else if (image) {
+      flush();
+      blocks.push({ kind: 'image', text: image[1].trim() || '挿絵', src: image[2] });
     } else if (page) {
       flush();
       blocks.push({ kind: 'page', text: page[1] });
@@ -65,7 +87,7 @@ export function parseBook(source: string, fileName = ''): Book {
   blocks.forEach((b, index) => {
     if (b.kind === 'h2' || b.kind === 'h3') toc.push({ index, level: b.kind === 'h2' ? 2 : 3, text: b.text });
   });
-  return { title, blocks, toc };
+  return { title, cover: coverSrc, blocks, toc };
 }
 
 /** 本の中身から ID を作る(同じ本を取り込み直しても、しおりが引き継がれる)。FNV-1a(32bit) を 2 通り。 */

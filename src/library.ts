@@ -10,6 +10,8 @@ export interface StoredBook {
   /** 本ファイルの中身(簡易 Markdown) */
   text: string;
   addedAt: number;
+  /** 本棚に出す表紙の小さな画像(data: URL)。表紙がない本は undefined */
+  cover?: string;
 }
 
 export type BookSummary = Omit<StoredBook, 'text'>;
@@ -53,5 +55,5 @@ export async function deleteBook(id: string): Promise<void> {
 /** 本棚に出す一覧(新しく追加した順)。文章は読まずに、書名だけ取り出す */
 export async function listBooks(): Promise<BookSummary[]> {
   const all = await withStore<StoredBook[]>('readonly', (s) => s.getAll());
-  return all.map(({ id, title, addedAt }) => ({ id, title, addedAt })).sort((a, b) => b.addedAt - a.addedAt);
+  return all.map(({ id, title, addedAt, cover }) => ({ id, title, addedAt, cover })).sort((a, b) => b.addedAt - a.addedAt);
 }

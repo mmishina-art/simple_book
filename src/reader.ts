@@ -1,5 +1,5 @@
 // 読書画面の DOM 操作。本の文章はすべて textContent で入れる(本ファイルの中身を HTML として扱わない)。
-import { type Book, type ReaderSettings, FONT_MAX, FONT_MIN, clampIndex, progressPercent } from './book';
+import { type Book, type ReaderSettings, FONT_MAX, FONT_MIN, clampIndex, isDataImage, progressPercent } from './book';
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id);
@@ -165,15 +165,28 @@ export function showBook(next: Book, startIndex: number): void {
   els.length = 0;
   $('reader-title').textContent = next.title;
   const frag = document.createDocumentFragment();
+  const images: HTMLImageElement[] = [];
   for (const block of next.blocks) {
-    const el = document.createElement(block.kind === 'p' || block.kind === 'page' ? 'p' : block.kind === 'h1' ? 'h2' : block.kind === 'h2' ? 'h3' : 'h4');
-    el.className = `b-${block.kind}`;
-    if (block.kind === 'page') {
-      el.textContent = `p.${block.text}`;
-      el.setAttribute('aria-label', `元の本の ${block.text} ページ`);
+    let el: HTMLElement;
+    if (block.kind === 'image' && block.src && isDataImage(block.src)) {
+      // 画像は data: のものだけ(book.ts で検査済み)。説明文は alt に入れる
+      el = document.createElement('figure');
+      const img = document.createElement('img');
+      img.src = block.src;
+      img.alt = block.text;
+      img.decoding = 'async';
+      images.push(img);
+      el.append(img);
     } else {
-      el.textContent = block.text;
+      el = document.createElement(block.kind === 'p' || block.kind === 'page' ? 'p' : block.kind === 'h1' ? 'h2' : block.kind === 'h2' ? 'h3' : 'h4');
+      if (block.kind === 'page') {
+        el.textContent = `p.${block.text}`;
+        el.setAttribute('aria-label', `元の本の ${block.text} ページ`);
+      } else {
+        el.textContent = block.text;
+      }
     }
+    el.className = `b-${block.kind}`;
     els.push(el);
     frag.append(el);
   }
@@ -184,6 +197,12 @@ export function showBook(next: Book, startIndex: number): void {
   scrollToIndex(startIndex);
   $('reader-progress').textContent = `${progressPercent(clampIndex(startIndex, els.length), els.length)}%`;
   body().focus({ preventScroll: true });
+  // 画像の大きさが決まると、それより後ろの位置が動く。画像の準備ができたら、読む場所に合わせ直す
+  if (images.length > 0) {
+    void Promise.allSettled(images.map((img) => img.decode())).then(() => {
+      if (book === next && lastReported < 0) scrollToIndex(startIndex);
+    });
+  }
 }
 
 export function hideBook(): void {

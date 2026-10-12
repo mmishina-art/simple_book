@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseBook } from '../src/book';
-import { buildBookMarkdown, cleanPage } from '../scripts/ocr-text.ts';
+import { type PageContent, buildBookMarkdown, cleanPage, isIllustrationPage } from '../src/ocr-text.ts';
 
 describe('cleanPage', () => {
   it('日本語の文字の間のスペースを取り、行をつなぐ', () => {
@@ -25,9 +25,11 @@ describe('cleanPage', () => {
   });
 });
 
+const text = (...pages: string[][]): PageContent[] => pages.map((paragraphs) => ({ paragraphs }));
+
 describe('buildBookMarkdown', () => {
   it('アプリが読める形になる', () => {
-    const md = buildBookMarkdown('テスト 本', [['一頁目。'], [], ['三頁目。', '続き。']]);
+    const md = buildBookMarkdown('テスト 本', text(['一頁目。'], [], ['三頁目。', '続き。']));
     const book = parseBook(md);
     expect(book.title).toBe('テスト 本');
     expect(book.blocks.map((b) => `${b.kind}:${b.text}`)).toEqual([
@@ -41,13 +43,13 @@ describe('buildBookMarkdown', () => {
   });
 
   it('行頭の # は見出しにならないよう外す', () => {
-    expect(parseBook(buildBookMarkdown('t', [['# 偽の見出し']])).blocks.at(-1)).toEqual({ kind: 'p', text: '偽の見出し' });
+    expect(parseBook(buildBookMarkdown('t', text(['# 偽の見出し']))).blocks.at(-1)).toEqual({ kind: 'p', text: '偽の見出し' });
   });
 });
 
 describe('見出しの自動検出', () => {
   const headings = (pages: string[][], detect = true): string[] =>
-    buildBookMarkdown('t', pages, detect).split('\n').filter((l) => /^##+ /.test(l));
+    buildBookMarkdown('t', text(...pages), { detect }).split('\n').filter((l) => /^##+ /.test(l));
 
   it('第一章・序章・あとがきなどを ## にする', () => {
     expect(headings([['序章'], ['第一章 旅立ち', '本文。'], ['第2部'], ['あとがき']])).toEqual(['## 序章', '## 第一章 旅立ち', '## 第2部', '## あとがき']);
@@ -75,8 +77,40 @@ describe('見出しの自動検出', () => {
   });
 
   it('アプリの目次になる', () => {
-    const book = parseBook(buildBookMarkdown('t', [['第一章 始まり', '本文。'], ['第二章']]));
+    const book = parseBook(buildBookMarkdown('t', text(['第一章 始まり', '本文。'], ['第二章'])));
     expect(book.toc.map((t) => t.text)).toEqual(['第一章 始まり', '第二章']);
   });
 });
 
+const IMG = 'data:image/jpeg;base64,/9j/4AAQ';
+
+describe('表紙と挿絵', () => {
+  it('表紙・挿絵を入れた本を、アプリが読める', () => {
+    const md = buildBookMarkdown('絵のある本', [{ paragraphs: [], image: IMG }, { paragraphs: ['本文です。'] }], { cover: IMG });
+    const book = parseBook(md);
+    expect(book.cover).toBe(IMG);
+    expect(book.blocks.map((b) => b.kind)).toEqual(['h1', 'image', 'page', 'image', 'page', 'p']);
+    expect(book.blocks[1]).toMatchObject({ kind: 'image', text: '表紙', src: IMG });
+    expect(book.blocks[3]).toMatchObject({ kind: 'image', text: '挿絵 p.1', src: IMG });
+  });
+
+  it('data: の画像以外(外部 URL・svg・スクリプト)は画像として読まない', () => {
+    const md = '# t\n\n![x](https://example.com/a.png)\n\n![x](data:image/svg+xml;base64,AAAA)\n\n![x](javascript:alert(1))\n\n本文。';
+    const book = parseBook(md);
+    expect(book.blocks.some((b) => b.kind === 'image')).toBe(false);
+    expect(book.cover).toBeUndefined();
+  });
+});
+
+describe('isIllustrationPage', () => {
+  it('文字が少なく、見出しでも白紙でもないページが、画像のページ', () => {
+    expect(isIllustrationPage([], false)).toBe(true);
+    expect(isIllustrationPage(['ヽ'], false)).toBe(true);
+  });
+
+  it('白紙・本文のあるページ・見出しのあるページは画像にしない', () => {
+    expect(isIllustrationPage([], true)).toBe(false);
+    expect(isIllustrationPage(['これは本文です。'.repeat(10)], false)).toBe(false);
+    expect(isIllustrationPage(['第一章'], false)).toBe(false);
+  });
+});
