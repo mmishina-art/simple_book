@@ -28,7 +28,7 @@ export interface ConvertResult {
   markdown: string;
   pages: number;
   images: number;
-  /** 文字も画像もなかったページの数 */
+  /** 文字も画像もなく、白紙でもなかったページの数(読み取れなかったページ) */
   empty: number;
 }
 
@@ -79,8 +79,9 @@ export function workerCount(): number {
 
 export async function convertPdf(file: File, o: ConvertOptions): Promise<ConvertResult> {
   const [pdfjs, workerUrl, { createWorker }] = await Promise.all([
-    import('pdfjs-dist'),
-    import('pdfjs-dist/build/pdf.worker.min.mjs?url').then((m) => m.default),
+    // legacy 版: 新しい JavaScript の機能(Map.prototype.getOrInsertComputed など)がない、古めのブラウザや iPhone の Safari でも動く
+    import('pdfjs-dist/legacy/build/pdf.mjs'),
+    import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url').then((m) => m.default),
     import('tesseract.js'),
   ]);
   pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
@@ -110,6 +111,7 @@ export async function convertPdf(file: File, o: ConvertOptions): Promise<Convert
   const pages: PageContent[] = Array.from({ length: total }, () => ({ paragraphs: [] }));
   let cover: string | undefined;
   let images = 0;
+  const blanks = new Set<number>();
   let done = 0;
   let next = 1;
   const started = performance.now();
@@ -136,7 +138,7 @@ export async function convertPdf(file: File, o: ConvertOptions): Promise<Convert
         // 最初のページは表紙の画像にする(表紙の文字は読まない)
         cover = toJpegDataUrl(canvas);
       } else if (isBlankCanvas(canvas)) {
-        // 白紙
+        blanks.add(n - 1);
       } else {
         const { data } = await worker.recognize(canvas);
         const paragraphs = cleanPage(data.text);
@@ -167,6 +169,6 @@ export async function convertPdf(file: File, o: ConvertOptions): Promise<Convert
     markdown,
     pages: total,
     images: images + (cover ? 1 : 0),
-    empty: pages.filter((p, i) => p.paragraphs.length === 0 && !p.image && !(i === 0 && cover)).length,
+    empty: pages.filter((p, i) => p.paragraphs.length === 0 && !p.image && !blanks.has(i) && !(i === 0 && cover)).length,
   };
 }

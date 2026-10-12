@@ -118,12 +118,33 @@ async function renderJpeg(n: number): Promise<Buffer> {
   return data;
 }
 const toDataUrl = (jpeg: Buffer): string => `data:image/jpeg;base64,${jpeg.toString('base64')}`;
-// 白紙の判定: 文字がなく、JPEG が小さい(ほぼ白一色)
-const BLANK_JPEG_BYTES = 40 * 1024;
+// 白紙の判定(アプリ内の変換 src/convert.ts と同じ): 小さなグレー画像にして、暗い点の割合を見る
+async function isBlankPage(n: number): Promise<boolean> {
+  const r = await run('pdftoppm', ['-gray', '-scale-to-x', '120', '-scale-to-y', '-1', '-f', String(n), '-l', String(n), pdf], { encoding: 'buffer', maxBuffer: 16 * 1024 * 1024 });
+  const pgm = r.stdout; // P5 形式: ヘッダー("P5\n幅 高さ\n255\n")のあとに、1 画素 1 バイト
+  let pos = 0;
+  const fields: string[] = [];
+  while (fields.length < 4) {
+    while (pgm[pos] === 0x0a || pgm[pos] === 0x20) pos++;
+    if (pgm[pos] === 0x23) {
+      while (pgm[pos] !== 0x0a) pos++; // コメント行
+      continue;
+    }
+    let token = '';
+    while (pgm[pos] !== 0x0a && pgm[pos] !== 0x20) token += String.fromCharCode(pgm[pos++]);
+    fields.push(token);
+  }
+  pos++; // ヘッダーの最後の空白
+  const pixels = pgm.subarray(pos);
+  let dark = 0;
+  for (const v of pixels) if (v < 170) dark++;
+  return dark / Math.max(1, pixels.length) < 0.004;
+}
 
 const pages: PageContent[] = [];
 let cover: string | undefined;
 let illustrationCount = 0;
+let blanks = 0;
 for (let n = 1; n <= last; n++) {
   if (n < first) {
     pages.push({ paragraphs: [] });
@@ -135,11 +156,11 @@ for (let n = 1; n <= last; n++) {
     cover = toDataUrl(await renderJpeg(n));
     pages.push({ paragraphs: [] });
   } else if (values.illustrations && isIllustrationPage(paragraphs, false)) {
-    const jpeg = await renderJpeg(n);
-    const blank = paragraphs.length === 0 && jpeg.length < BLANK_JPEG_BYTES;
-    if (blank) pages.push({ paragraphs: [] });
-    else {
-      pages.push({ paragraphs, image: toDataUrl(jpeg) });
+    if (await isBlankPage(n)) {
+      blanks++;
+      pages.push({ paragraphs: [] });
+    } else {
+      pages.push({ paragraphs, image: toDataUrl(await renderJpeg(n)) });
       illustrationCount++;
     }
   } else {
@@ -150,8 +171,8 @@ const title = values.title ?? base;
 const markdown = buildBookMarkdown(title, pages, { detect: !values['no-headings'], cover });
 await writeFile(out, markdown);
 const headings = markdown.split('\n').filter((l) => /^##+ /.test(l)).length;
-const empty = pages.slice(first - 1).filter((p) => p.paragraphs.length === 0 && !p.image).length;
-console.log(`書き出しました: ${out}${empty > 0 ? `(文字も画像もないページ: ${empty})` : ''}`);
+const empty = pages.slice(first - 1).filter((p) => p.paragraphs.length === 0 && !p.image).length - blanks - (cover ? 1 : 0);
+console.log(`書き出しました: ${out}${empty > 0 ? `(文字を読み取れなかったページ: ${empty})` : ''}`);
 if (cover || illustrationCount > 0) console.log(`画像: ${cover ? '表紙 1 枚' : ''}${cover && illustrationCount > 0 ? ' + ' : ''}${illustrationCount > 0 ? `挿絵 ${illustrationCount} 枚` : ''}`);
 console.log(`見出しを ${headings} 個、自動で付けました(第一章 / 序章 / 漢数字だけの行など。いらないときは --no-headings)`);
 console.log('OCR の誤りや見出しの付け間違いは、このファイルをテキストエディタで直せます。アプリの「本を追加」で選んでください。');
