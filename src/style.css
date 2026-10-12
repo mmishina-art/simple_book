@@ -15,8 +15,9 @@
   --primary-text: #ffffff;
 }
 
+/* 端末の設定に従う(読書画面の「色」で自動のとき) */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme]) {
     --bg: #0d1117;
     --surface: #161b22;
     --text: #e6edf3;
@@ -25,6 +26,32 @@
     --primary: #2f81f7;
     --primary-text: #ffffff;
   }
+}
+
+/* 読書画面の「色」で選んだとき */
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #0d1117;
+  --surface: #161b22;
+  --text: #e6edf3;
+  --muted: #9198a1;
+  --border: #3d444d;
+  --primary: #2f81f7;
+  --primary-text: #ffffff;
+}
+
+:root[data-theme='sepia'] {
+  --bg: #f4ecd8;
+  --surface: #fbf5e6;
+  --text: #433422;
+  --muted: #7a6a55;
+  --border: #d8c9a8;
+  --primary: #8a5a1f;
+  --primary-text: #ffffff;
 }
 
 * {
@@ -52,7 +79,7 @@ body {
   overscroll-behavior: none;
 }
 
-main {
+.screen {
   max-width: 480px;
   margin: 0 auto;
   /* iPhone のノッチ・ホームバーを避ける */
@@ -232,4 +259,298 @@ button.link {
 .boot-error small {
   display: block;
   color: var(--muted);
+}
+
+/* ---- 本棚 ---- */
+.book-list {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.book-list li {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.book-list button {
+  border: 0;
+  background: transparent;
+  margin: 0;
+}
+
+.book-open {
+  flex: 1;
+  min-width: 0;
+  min-height: 56px;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.book-title {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.book-open small {
+  color: var(--muted);
+}
+
+.book-delete {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.empty {
+  padding: 16px 0;
+}
+
+.primary-file {
+  display: block;
+  text-align: center;
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-text);
+  font-weight: 700;
+  margin: 8px 0;
+}
+
+.howto {
+  margin-top: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 4px 12px;
+  background: var(--surface);
+}
+
+.howto summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.howto code {
+  overflow-wrap: anywhere;
+}
+
+/* ---- 読書画面 ---- */
+.reader {
+  min-height: 100dvh;
+}
+
+.reader-bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  /* 上端は iPhone のぼかしの帯を避ける(--safe-top) */
+  padding: var(--safe-top) max(8px, env(safe-area-inset-right)) 4px max(8px, env(safe-area-inset-left));
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.reader-bar button {
+  margin: 0;
+  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+}
+
+#reader-back {
+  font-size: 1.6rem;
+  line-height: 1;
+}
+
+.reader-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reader-body {
+  --reader-size: 18px;
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 16px max(20px, env(safe-area-inset-right)) 72px max(20px, env(safe-area-inset-left));
+  font-size: var(--reader-size);
+  line-height: 1.9;
+  outline: none;
+  font-family: 'Hiragino Mincho ProN', 'Yu Mincho', 'Noto Serif JP', serif;
+}
+
+.reader-body[data-font='sans'] {
+  font-family: system-ui, -apple-system, 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+}
+
+.reader-body p,
+.reader-body h2,
+.reader-body h3,
+.reader-body h4 {
+  margin: 0;
+  margin-block-end: 0.9em;
+  overflow-wrap: anywhere;
+}
+
+.b-p {
+  white-space: pre-line;
+  text-indent: 1em;
+}
+
+.reader-body h2 {
+  font-size: 1.4em;
+  margin-block-start: 1.4em;
+}
+
+.reader-body h3 {
+  font-size: 1.2em;
+  margin-block-start: 1.6em;
+}
+
+.reader-body h4 {
+  font-size: 1.05em;
+  margin-block-start: 1.2em;
+}
+
+.b-page {
+  font-size: 0.7em;
+  text-align: center;
+  color: var(--muted);
+  margin-block: 1.2em 0.6em;
+}
+
+.reader-foot {
+  position: fixed;
+  right: max(12px, env(safe-area-inset-right));
+  bottom: max(8px, env(safe-area-inset-bottom));
+  padding: 2px 10px;
+  font-size: 0.8rem;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  pointer-events: none;
+}
+
+/* 目次・設定のシート */
+.sheet {
+  width: min(448px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  padding: 16px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+
+.sheet::backdrop {
+  background: rgb(0 0 0 / 0.5);
+}
+
+.sheet h2 {
+  font-size: 1.1rem;
+  margin: 0 0 8px;
+}
+
+.sheet > button[data-close] {
+  display: block;
+  width: 100%;
+  margin: 12px 0 0;
+}
+
+.toc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.toc-list button {
+  width: 100%;
+  margin: 0;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.toc-l3 button {
+  padding-left: 2em;
+  font-size: 0.9em;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.sheet button[aria-pressed='true'] {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-text);
+  font-weight: 700;
+}
+
+.sheet button:disabled {
+  opacity: 0.4;
+}
+
+.theme-buttons {
+  flex-basis: 100%;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.theme-buttons button {
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+/* ---- 縦書き ----
+   本文の枠(#reader-body)が、画面いっぱいの高さで、横にスクロールする。右から左へ読み進む。 */
+.reader[data-direction='vertical'] {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.reader[data-direction='vertical'] .reader-body {
+  flex: 1;
+  min-height: 0;
+  max-width: none;
+  margin: 0;
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  writing-mode: vertical-rl;
+  line-height: 1.8;
+  /* 縦の余白: 文字が枠の上下にくっつかないように。下はページ表示を避ける */
+  padding: 20px max(20px, env(safe-area-inset-right)) max(40px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+  overscroll-behavior-x: contain;
+}
+
+.reader[data-direction='vertical'] .b-page {
+  text-combine-upright: digits 3;
+  margin-block: 0;
+  margin-inline: 0.6em 0.3em;
 }

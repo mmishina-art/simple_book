@@ -6,35 +6,43 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#1f6feb" />
     <meta name="app-id" content="__APP_ID__" />
-    <meta name="description" content="PWAアプリのテンプレート" />
+    <meta name="description" content="PDFから作った本を読む電子書籍アプリ" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <!-- iPhone のホーム画面アプリ: ステータスバーは不透明にする（暗い固定・端末設定に従う: black / 明るい固定: default）。
          black-translucent にすると、ステータスバーの下に入った内容を iOS がぼかして、画面の上端の文字が読みにくくなる -->
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
-    <meta name="apple-mobile-web-app-title" content="PWAアプリ" />
+    <meta name="apple-mobile-web-app-title" content="本棚" />
     <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
-    <title>PWAアプリ</title>
+    <title>本棚 - 電子書籍</title>
   </head>
   <body>
-    <main id="app">
+    <!-- 本棚(最初の画面) -->
+    <main id="shelf" class="screen">
       <header class="header">
-        <h1>PWAアプリ</h1>
-        <button id="sound-button" type="button" class="icon-button" aria-label="音" aria-pressed="true">🔊</button>
+        <h1>本棚</h1>
       </header>
 
-      <!-- サンプル: タップ回数を数える。本番では置き換える -->
-      <section class="card">
-        <p class="count" id="count" aria-live="polite">0</p>
-        <p class="muted">最高記録: <span id="best">0</span></p>
-        <button id="tap-button" type="button" class="primary">タップ</button>
-        <button id="reset-button" type="button">リセット</button>
-      </section>
+      <ul id="book-list" class="book-list" aria-label="取り込んだ本"></ul>
+      <p id="empty-message" class="muted empty" hidden>まだ本がありません。パソコンで PDF から作った本ファイル(.md)を、下のボタンから取り込んでください。</p>
+
+      <label class="file-button primary-file">本を追加<input id="book-import" type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" multiple hidden></label>
+      <p id="import-message" class="muted" role="status"></p>
+
+      <details class="howto">
+        <summary>PDF から本ファイルを作るには</summary>
+        <ol>
+          <li>パソコンに poppler と tesseract(日本語データつき)を入れる</li>
+          <li><code>node scripts/pdf2book.ts 本.pdf</code> を実行すると、OCR で <code>本.md</code> ができる</li>
+          <li>できたファイルを、AirDrop・メール・クラウドなどでスマホに送り、「本を追加」で選ぶ</li>
+        </ol>
+        <p class="muted">くわしくは README を見てください。</p>
+      </details>
 
       <details class="backup">
-        <summary>記録のバックアップ</summary>
-        <p class="muted">記録は、このブラウザの中にだけ保存されています。ファイルに残しておくと、消えたときに戻せます。</p>
+        <summary>しおり・設定のバックアップ</summary>
+        <p class="muted">しおりと読書の設定は、このブラウザの中にだけ保存されています。ファイルに残しておくと、消えたときに戻せます。本そのものは含まれないので、本ファイルは別に取っておいてください。</p>
         <button id="backup-export" type="button">ファイルに書き出す</button>
         <label class="file-button">ファイルから読み込む<input id="backup-import" type="file" accept="application/json,.json" hidden></label>
         <p id="backup-message" class="muted" role="status"></p>
@@ -44,6 +52,65 @@
 
       <p class="muted version">v<span id="version"></span></p>
     </main>
+
+    <!-- 読書画面 -->
+    <div id="reader" class="reader" hidden>
+      <header class="reader-bar">
+        <button id="reader-back" type="button" aria-label="本棚にもどる">‹</button>
+        <h2 id="reader-title" class="reader-title"></h2>
+        <button id="toc-open" type="button" aria-label="目次">目次</button>
+        <button id="settings-open" type="button" aria-label="文字と明るさの設定">Aa</button>
+      </header>
+      <article id="reader-body" class="reader-body" tabindex="-1"></article>
+      <footer class="reader-foot">
+        <span id="reader-progress" role="status" aria-live="off"></span>
+      </footer>
+    </div>
+
+    <!-- 目次 -->
+    <dialog id="toc-dialog" class="sheet" aria-labelledby="toc-title">
+      <h2 id="toc-title">目次</h2>
+      <ul id="toc-list" class="toc-list"></ul>
+      <p id="toc-empty" class="muted" hidden>この本には見出し(## …)がありません。</p>
+      <button type="button" data-close>とじる</button>
+    </dialog>
+
+    <!-- 文字と明るさの設定 -->
+    <dialog id="settings-dialog" class="sheet" aria-labelledby="settings-title">
+      <h2 id="settings-title">読みやすさ</h2>
+      <div class="row">
+        <span>文字の大きさ</span>
+        <span>
+          <button id="font-down" type="button" aria-label="文字を小さく">A−</button>
+          <span id="font-size" class="muted" aria-live="polite"></span>
+          <button id="font-up" type="button" aria-label="文字を大きく">A＋</button>
+        </span>
+      </div>
+      <div class="row" role="group" aria-label="文字の向き">
+        <span>向き</span>
+        <span>
+          <button type="button" data-direction="vertical" aria-pressed="false">縦書き</button>
+          <button type="button" data-direction="horizontal" aria-pressed="false">横書き</button>
+        </span>
+      </div>
+      <div class="row" role="group" aria-label="書体">
+        <span>書体</span>
+        <span>
+          <button type="button" data-font="serif" aria-pressed="false">明朝</button>
+          <button type="button" data-font="sans" aria-pressed="false">ゴシック</button>
+        </span>
+      </div>
+      <div class="row" role="group" aria-label="色">
+        <span>色</span>
+        <span class="theme-buttons">
+          <button type="button" data-theme-choice="auto" aria-pressed="false">自動</button>
+          <button type="button" data-theme-choice="light" aria-pressed="false">明るい</button>
+          <button type="button" data-theme-choice="sepia" aria-pressed="false">セピア</button>
+          <button type="button" data-theme-choice="dark" aria-pressed="false">暗い</button>
+        </span>
+      </div>
+      <button type="button" data-close>とじる</button>
+    </dialog>
 
     <!-- インストール方法（最初の画面から開く） -->
     <dialog id="install-dialog" class="install-dialog" aria-labelledby="install-title">

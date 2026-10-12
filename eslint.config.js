@@ -21,7 +21,7 @@ export default tseslint.config(
   },
   // public/ のスクリプトは、ビルドを通さずにそのまま配信される（普通の <script>）
   { files: ['public/**/*.js'], languageOptions: { sourceType: 'script', globals: globals.browser } },
-  { files: ['tests/**/*.ts', 'scripts/**/*.mjs', 'vite.config.ts', 'playwright.config.ts', '*.js'], languageOptions: { globals: globals.node } },
+  { files: ['tests/**/*.ts', 'scripts/**/*.mjs', 'scripts/**/*.ts', 'vite.config.ts', 'playwright.config.ts', '*.js'], languageOptions: { globals: globals.node } },
   // page.evaluate() のコールバックはブラウザで動くので、両方の globals を許可する
   { files: ['e2e/**/*.ts'], languageOptions: { globals: { ...globals.node, ...globals.browser } } },
 );
