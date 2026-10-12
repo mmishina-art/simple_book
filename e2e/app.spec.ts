@@ -47,7 +47,9 @@ test('本を追加して開き、本文を読んで、本棚に戻れる', async
   await expect(page.locator('#shelf')).toBeHidden();
   await expect(page.locator('#reader-title')).toHaveText('テストの本');
   await expect(page.getByText('最初の段落です。')).toBeVisible();
-  await expect(page.getByText('p.1')).toBeVisible();
+  // ページ番号の目印(「p.」は CSS で付けるので、文字は数字だけ。読み上げ用に aria-label も付く)
+  await expect(page.locator('.b-page')).toHaveText('1');
+  await expect(page.locator('.b-page')).toHaveAttribute('aria-label', '元の本の 1 ページ');
 
   await page.getByRole('button', { name: '本棚にもどる' }).click();
   await expect(page.locator('#shelf')).toBeVisible();

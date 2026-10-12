@@ -25,6 +25,45 @@ export function cleanPage(raw: string): string[] {
   return paragraphs;
 }
 
+// ---- 行(縦書きでは列)の位置から、段落を復元する ----
+// 縦書き用の OCR(psm 5)は、段落の切れ目を出さない。そこで、各行の位置から推定する:
+//  ・行頭が字下げされている行は、新しい段落の始まり(縦書きは列の上端が下がる、横書きは左端が右に寄る)
+//  ・行の終わりが短い(ページの端まで届かない)行は、段落の終わり
+export interface OcrLine {
+  text: string;
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+const percentile = (sorted: number[], q: number): number => sorted[Math.min(sorted.length - 1, Math.max(0, Math.round(q * (sorted.length - 1))))];
+const median = (xs: number[]): number => percentile([...xs].sort((a, b) => a - b), 0.5);
+
+/** 行の並びを、段落を空行で区切った文字列にする(cleanPage に渡す形)。縦書きは右の列から、横書きは上の行から読む。 */
+export function linesToText(lines: OcrLine[], vertical: boolean): string {
+  const rows = lines.filter((l) => l.text.trim() !== '');
+  if (rows.length === 0) return '';
+  // 読む順に並べる
+  rows.sort(vertical ? (a, b) => b.x0 + b.x1 - (a.x0 + a.x1) : (a, b) => a.y0 + a.y1 - (b.y0 + b.y1));
+  const start = (l: OcrLine): number => (vertical ? l.y0 : l.x0); // 行の頭の位置
+  const end = (l: OcrLine): number => (vertical ? l.y1 : l.x1); // 行の終わりの位置
+  const size = median(rows.map((l) => (vertical ? l.x1 - l.x0 : l.y1 - l.y0))); // 1 字の大きさ(列の幅・行の高さ)
+  const heads = rows.map(start).sort((a, b) => a - b);
+  const ends = rows.map(end).sort((a, b) => a - b);
+  const head = percentile(heads, 0.15); // ふつうの行の頭の位置(字下げのない行)
+  const tail = percentile(ends, 0.85); // ふつうの行の終わりの位置(ページの端まで届く行)
+
+  const paragraphs: string[][] = [];
+  rows.forEach((l, i) => {
+    const indented = start(l) > head + size * 0.5;
+    const previousShort = i > 0 && end(rows[i - 1]) < tail - size * 1.5;
+    if (i === 0 || indented || previousShort) paragraphs.push([]);
+    paragraphs[paragraphs.length - 1].push(l.text.trim());
+  });
+  return paragraphs.map((p) => p.join('\n')).join('\n\n');
+}
+
 // ---- 見出しの自動検出 ----
 // 小説の見出しは短く、決まった形が多い。文の途中や本文を見出しにしないよう、「全体がその形」で「文末の記号がない」ものだけを選ぶ。
 const NUM = '[一二三四五六七八九十百千〇零0-9０-９]+';
@@ -65,25 +104,56 @@ export interface BuildOptions {
   cover?: string;
 }
 
+// ---- ページをまたぐ段落のつなぎ ----
+// 文の途中でページが変わると、OCR はそこで段落を切ってしまう。前のページの最後の段落が文の途中で終わっていれば、
+// 次のページの最初の段落をつなぐ(ページ番号の目印は、つないだ段落のあとに置く)。
+const SENTENCE_END = /[。．.！？!?」』）)〉》】〕”’…―]$/;
+const DIALOGUE_START = /^[「『（(〈《【〔“‘]/;
+
+function joinText(a: string, b: string): string {
+  return ENDS_WITH_CJK.test(a) || STARTS_WITH_CJK.test(b) ? a + b : `${a} ${b}`;
+}
+
+type Item = { type: 'page'; n: number } | { type: 'image'; src: string; n: number } | { type: 'p'; text: string; level: string };
+
 /** 書名とページごとの内容から、本ファイル(簡易 Markdown。形式は src/book.ts)を作る */
 export function buildBookMarkdown(title: string, pages: PageContent[], options: BuildOptions = {}): string {
   const detect = options.detect ?? true;
   const kinds = detect ? pages.map((page) => page.paragraphs.map(headingKind)) : [];
   // 「第一章」のような大きな区切りがある本では、漢数字だけの行はその下の小見出し(###)。なければ章(##)。
   const hasBig = kinds.some((row) => row.includes('big'));
-  const out: string[] = [`# ${title.replace(/\s+/g, ' ').trim() || '無題'}`];
-  if (options.cover) out.push(`<!-- cover: ${options.cover} -->`);
+  const levelOf = (kind: ReturnType<typeof headingKind> | undefined): string =>
+    kind === 'big' ? '##' : kind === 'small' ? '###' : kind === 'number' ? (hasBig ? '###' : '##') : '';
+
+  const items: Item[] = [];
+  let last: { type: 'p'; text: string; level: string } | undefined; // 直前のページの、最後の段落
   pages.forEach((page, i) => {
     if (page.paragraphs.length === 0 && !page.image) return;
-    out.push(`<!-- page ${i + 1} -->`);
-    if (page.image) out.push(`![挿絵 p.${i + 1}](${page.image})`);
-    page.paragraphs.forEach((p, j) => {
-      // 行頭が # の段落は、見出しと取り違えられないよう目印を外す
-      const text = p.replace(/^#+\s*/, '');
-      const kind = kinds[i]?.[j] ?? null;
-      const level = kind === 'big' ? '##' : kind === 'small' ? '###' : kind === 'number' ? (hasBig ? '###' : '##') : '';
-      out.push(level ? `${level} ${text}` : text);
-    });
+    const paragraphs = page.paragraphs.map((p) => p.replace(/^#+\s*/, '')); // 行頭が # の段落は、見出しと取り違えられないよう目印を外す
+    let from = 0;
+    const first = paragraphs[0];
+    const mergeable =
+      last && !last.level && !page.image && first !== undefined && !levelOf(kinds[i]?.[0]) && !SENTENCE_END.test(last.text) && !DIALOGUE_START.test(first);
+    if (last && mergeable) {
+      last.text = joinText(last.text, first);
+      from = 1;
+    }
+    items.push({ type: 'page', n: i + 1 });
+    if (page.image) items.push({ type: 'image', src: page.image, n: i + 1 });
+    for (let j = from; j < paragraphs.length; j++) {
+      const item = { type: 'p' as const, text: paragraphs[j], level: levelOf(kinds[i]?.[j]) };
+      items.push(item);
+      last = item;
+    }
+    if (page.image || paragraphs.length === from) last = undefined; // 画像だけのページをはさむ・段落がないときは、つながない
   });
+
+  const out: string[] = [`# ${title.replace(/\s+/g, ' ').trim() || '無題'}`];
+  if (options.cover) out.push(`<!-- cover: ${options.cover} -->`);
+  for (const item of items) {
+    if (item.type === 'page') out.push(`<!-- page ${item.n} -->`);
+    else if (item.type === 'image') out.push(`![挿絵 p.${item.n}](${item.src})`);
+    else out.push(item.level ? `${item.level} ${item.text}` : item.text);
+  }
   return out.join('\n\n') + '\n';
 }

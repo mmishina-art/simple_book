@@ -12,7 +12,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { parseArgs, promisify } from 'node:util';
-import { type PageContent, buildBookMarkdown, cleanPage, isIllustrationPage } from '../src/ocr-text.ts';
+import { type OcrLine, type PageContent, buildBookMarkdown, cleanPage, isIllustrationPage, linesToText } from '../src/ocr-text.ts';
 
 const run = promisify(execFile);
 
@@ -79,17 +79,34 @@ await mkdir(work, { recursive: true });
 
 const pageFile = (n: number): string => join(work, `page-${String(n).padStart(4, '0')}.txt`);
 
+/** tesseract の tsv(単語ごとの行)から、行(縦書きでは列)ごとの文字と位置を集める */
+function tsvLines(tsv: string): OcrLine[] {
+  const lines = new Map<string, OcrLine>();
+  for (const row of tsv.split('\n').slice(1)) {
+    const c = row.split('\t');
+    if (c.length < 12 || c[0] !== '5' || c[11].trim() === '') continue; // level 5 = 単語
+    const [x, y, w, h] = [Number(c[6]), Number(c[7]), Number(c[8]), Number(c[9])];
+    const key = `${c[2]}-${c[3]}-${c[4]}`; // block-par-line
+    const l = lines.get(key);
+    if (l) Object.assign(l, { text: l.text + c[11], x0: Math.min(l.x0, x), y0: Math.min(l.y0, y), x1: Math.max(l.x1, x + w), y1: Math.max(l.y1, y + h) });
+    else lines.set(key, { text: c[11], x0: x, y0: y, x1: x + w, y1: y + h });
+  }
+  return [...lines.values()];
+}
+
 async function ocrPage(n: number): Promise<void> {
   if (existsSync(pageFile(n))) return;
   const prefix = join(work, `img-${n}`);
   await run('pdftoppm', ['-r', String(dpi), '-gray', '-png', '-singlefile', '-f', String(n), '-l', String(n), pdf, prefix]);
   const image = `${prefix}.png`;
   try {
-    const r = await run('tesseract', [image, 'stdout', '-l', lang, '--psm', psm], {
+    const vertical = lang.includes('jpn_vert');
+    // 縦書き(psm 5)は段落の切れ目を出さないので、tsv で各列の位置を受け取り、字下げなどから段落を復元する
+    const r = await run('tesseract', [image, 'stdout', '-l', lang, '--psm', psm, ...(vertical ? ['tsv'] : [])], {
       env: { ...process.env, OMP_THREAD_LIMIT: '1' },
       maxBuffer: 64 * 1024 * 1024,
     });
-    await writeFile(pageFile(n), r.stdout);
+    await writeFile(pageFile(n), vertical ? linesToText(tsvLines(r.stdout), true) : r.stdout);
   } finally {
     await rm(image, { force: true });
   }

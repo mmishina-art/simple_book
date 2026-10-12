@@ -427,6 +427,10 @@ button.link {
   margin-block-start: 1.2em;
 }
 
+.b-page::before {
+  content: 'p.';
+}
+
 .b-page {
   font-size: 0.7em;
   text-align: center;
@@ -550,9 +554,15 @@ button.link {
 }
 
 .reader[data-direction='vertical'] .b-page {
+  /* 縦書きでは、数字だけを(縦中横で 1 文字分に収めて)、列の上寄せで小さく出す。中央揃えだと、文の途中の真ん中に浮いてしまう */
+  text-align: start;
   text-combine-upright: digits 3;
   margin-block: 0;
   margin-inline: 0.6em 0.3em;
+}
+
+.reader[data-direction='vertical'] .b-page::before {
+  content: none;
 }
 
 /* ---- 画像(表紙・挿絵) ---- */

@@ -1,7 +1,7 @@
 // PDF → 本ファイルの変換(ブラウザの中で OCR する)。pdf.js でページを画像にして、tesseract.js で文字にする。
 // 重いので、「PDF を変換」画面を開いたときだけ読み込む(main.ts から動的 import)。
 // OCR の整形・見出しの検出・本ファイルの組み立ては、パソコン用のコマンドと共通の src/ocr-text.ts。
-import { ILLUSTRATION_MAX_CHARS, type PageContent, buildBookMarkdown, cleanPage, isIllustrationPage } from './ocr-text';
+import { ILLUSTRATION_MAX_CHARS, type OcrLine, type PageContent, buildBookMarkdown, cleanPage, isIllustrationPage, linesToText } from './ocr-text';
 
 export type Direction = 'auto' | 'vertical' | 'horizontal';
 
@@ -179,8 +179,10 @@ export async function convertPdf(file: File, o: ConvertOptions): Promise<Convert
       } else if (isBlankCanvas(canvas)) {
         blanks.add(n - 1);
       } else {
-        const { data } = await worker.recognize(canvas);
-        const paragraphs = cleanPage(data.text);
+        // 縦書きの OCR(psm 5)は段落の切れ目を出さないので、各列の位置から段落を復元する
+        const { data } = await worker.recognize(canvas, {}, vertical ? { text: true, blocks: true } : { text: true });
+        const lines: OcrLine[] = (data.blocks ?? []).flatMap((b) => b.paragraphs.flatMap((p) => p.lines.map((l) => ({ text: l.text, ...l.bbox }))));
+        const paragraphs = cleanPage(vertical && lines.length > 0 ? linesToText(lines, true) : data.text);
         if (o.illustrations && isIllustrationPage(paragraphs, false)) {
           pages[n - 1] = { paragraphs, image: toJpegDataUrl(canvas) };
           images++;

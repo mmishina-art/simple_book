@@ -180,7 +180,7 @@ export function showBook(next: Book, startIndex: number): void {
     } else {
       el = document.createElement(block.kind === 'p' || block.kind === 'page' ? 'p' : block.kind === 'h1' ? 'h2' : block.kind === 'h2' ? 'h3' : 'h4');
       if (block.kind === 'page') {
-        el.textContent = `p.${block.text}`;
+        el.textContent = block.text; // 「p.」は CSS で付ける(縦書きでは数字だけを、上寄せで小さく出す)
         el.setAttribute('aria-label', `元の本の ${block.text} ページ`);
       } else {
         el.textContent = block.text;
